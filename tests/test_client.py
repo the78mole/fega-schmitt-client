@@ -77,6 +77,35 @@ def test_get_price_availability_rejects_malformed_response_body():
         client.get_price_availability([PriceAvailRequestItem(material_number="0815", quantity=1)])
 
 
+@respx.mock
+def test_get_price_availability_sends_partner_warehouse_when_set():
+    route = respx.post(DEFAULT_ENDPOINT).mock(return_value=httpx.Response(200, content=EXAMPLE_RESPONSE_XML))
+
+    client = FegaSchmittClient(partner_purchaser="9920", legitimation_id="kennwort")
+    client.get_price_availability(
+        [PriceAvailRequestItem(material_number="0815", quantity=1)],
+        shipment_type="02",
+        partner_warehouse="22",
+    )
+
+    sent_body = route.calls.last.request.content.decode("ISO-8859-1")
+    assert "PARTNER_WAREHOUSE>22<" in sent_body
+
+
+@respx.mock
+def test_get_price_availability_rejects_invalid_partner_warehouse_without_http_call():
+    route = respx.post(DEFAULT_ENDPOINT).mock(return_value=httpx.Response(200, content=EXAMPLE_RESPONSE_XML))
+
+    client = FegaSchmittClient(partner_purchaser="9920", legitimation_id="kennwort")
+    with pytest.raises(ValueError):
+        client.get_price_availability(
+            [PriceAvailRequestItem(material_number="0815", quantity=1)],
+            partner_warehouse="Erlangen",
+        )
+
+    assert route.call_count == 0
+
+
 def test_get_price_availability_rejects_empty_items():
     client = FegaSchmittClient(partner_purchaser="9920", legitimation_id="kennwort")
     with pytest.raises(ValueError):

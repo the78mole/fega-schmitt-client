@@ -60,6 +60,41 @@ def test_build_request_formats_decimal_quantity_without_trailing_zeros():
     assert "REQUEST_QUANTITY>5.5<" in xml_text
 
 
+def test_build_request_omits_partner_warehouse_by_default():
+    items = [PriceAvailRequestItem(material_number="A", quantity=1)]
+    xml_text = _build(items)
+
+    assert "<PARTNER_WAREHOUSE />" in xml_text
+
+
+def test_build_request_includes_partner_warehouse_when_set():
+    items = [PriceAvailRequestItem(material_number="A", quantity=1)]
+    xml_text = build_request(
+        items,
+        partner_purchaser="9920",
+        legitimation_id="kennwort",
+        partner_company="50",
+        transaction_id="N001",
+        partner_warehouse="22",
+    ).decode("ISO-8859-1")
+
+    assert "PARTNER_WAREHOUSE>22<" in xml_text
+
+
+@pytest.mark.parametrize("invalid_value", ["", "12345", "22a", "Erlangen", "-1", "1.0"])
+def test_build_request_rejects_invalid_partner_warehouse(invalid_value):
+    items = [PriceAvailRequestItem(material_number="A", quantity=1)]
+    with pytest.raises(ValueError):
+        build_request(
+            items,
+            partner_purchaser="9920",
+            legitimation_id="kennwort",
+            partner_company="50",
+            transaction_id="N001",
+            partner_warehouse=invalid_value,
+        )
+
+
 def test_parse_response_example_from_spec_appendix():
     parsed = parse_response(EXAMPLE_RESPONSE_XML)
 
@@ -105,6 +140,31 @@ def test_parse_response_hint_return_code_maps_to_hint_status():
 def test_parse_response_rejects_malformed_xml():
     with pytest.raises(FegaTransportError):
         parse_response(b"not xml")
+
+
+def test_parse_response_tolerates_bare_ampersand_in_warehouse_name():
+    # Observed live from FEGA & Schmitt: PARTNER_WAREHOUSE_NAME can contain an
+    # unescaped "&" (e.g. "FEGA & Schmitt Erlangen"), making the XML technically
+    # invalid. parse_response() should repair and parse it anyway.
+    xml = (
+        EXAMPLE_RESPONSE_XML.decode("ISO-8859-1")
+        .replace(
+            "<PARTNER_WAREHOUSE_NAME>Zentrallager</PARTNER_WAREHOUSE_NAME>",
+            "<PARTNER_WAREHOUSE_NAME>FEGA & Schmitt Erlangen</PARTNER_WAREHOUSE_NAME>",
+            1,
+        )
+        .encode("ISO-8859-1")
+    )
+
+    parsed = parse_response(xml)
+
+    assert parsed.items[0].warehouse_name == "FEGA & Schmitt Erlangen"
+
+
+def test_parse_response_still_rejects_xml_broken_for_other_reasons():
+    xml = EXAMPLE_RESPONSE_XML.decode("ISO-8859-1").replace("</ITEM_LIST>", "", 1).encode("ISO-8859-1")
+    with pytest.raises(FegaTransportError):
+        parse_response(xml)
 
 
 def test_parse_response_rejects_missing_body():

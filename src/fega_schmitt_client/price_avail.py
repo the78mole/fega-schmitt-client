@@ -58,6 +58,17 @@ class FegaSchmittClient:
     ) -> list[PriceAvailResultItem]:
         """Query price and availability for up to :data:`MAX_ITEMS` articles.
 
+        ``partner_warehouse`` is FEGA & Schmitt's numeric Lagernummer (max. 4
+        digits, e.g. ``"22"`` - not a location name). It's only relevant for
+        ``shipment_type="02"`` (Abholung/pickup), to request a pickup
+        warehouse other than the default one; leave it unset (the default)
+        for delivery or to use the standard warehouse. An invalid value
+        raises :class:`ValueError` before any request is sent. Note: live
+        testing found every non-empty value resolving to the same (default)
+        warehouse for one account - see :func:`fega_schmitt_client._soap.build_request`
+        for details; don't assume a specific value reliably picks a specific
+        warehouse without verifying first.
+
         Errors on individual positions are reported per item in the result
         (``status="error"``); only transport-level failures (timeout,
         non-200 HTTP status, malformed SOAP, rejected credentials) raise.

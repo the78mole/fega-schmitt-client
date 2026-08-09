@@ -7,6 +7,7 @@ docs/specs/Schnittstellenbeschreibung_SOAP.pdf, sections 3.2/3.3.
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -19,6 +20,17 @@ REQUEST_NS = "https://soap.fega.de/priceavail.php"
 
 ET.register_namespace("soap", SOAP_NS)
 ET.register_namespace("a", REQUEST_NS)
+
+# Spec section 3.2 lists PARTNER_WAREHOUSE as "anum 4", but it's a Lagernummer
+# (warehouse number) - every example in the spec (incl. the response's
+# AVAILABILITY_PARTNER_WAREHOUSE, e.g. "22") is purely numeric, so we validate
+# it as such here to fail fast instead of letting the server reject it.
+_PARTNER_WAREHOUSE_RE = re.compile(r"^\d{1,4}$")
+
+# Observed live: FEGA's server sometimes writes bare "&" into PARTNER_WAREHOUSE_NAME
+# (e.g. "FEGA & Schmitt Erlangen"), which is invalid XML. We only fall back to
+# this repair when strict parsing fails, so well-formed responses are untouched.
+_BARE_AMPERSAND_RE = re.compile(rb"&(?!amp;|lt;|gt;|quot;|apos;|#)")
 
 
 @dataclass
@@ -41,7 +53,32 @@ def build_request(
     postal_code: str | None = None,
     country_code: str | None = None,
 ) -> bytes:
-    """Build a ``PRICE_AVAIL_REQUEST`` SOAP envelope as ISO-8859-1-encoded bytes."""
+    """Build a ``PRICE_AVAIL_REQUEST`` SOAP envelope as ISO-8859-1-encoded bytes.
+
+    ``partner_warehouse`` is the FEGA & Schmitt Lagernummer per spec (a
+    numeric warehouse *number*, max. 4 digits - not a location name such as
+    "Erlangen"), sent as ``PARTNER_WAREHOUSE`` in the request ``HEADER``. It
+    only matters when ``shipment_type="02"`` (Abholung/pickup) and is meant
+    to let the caller ask for a pickup warehouse other than FEGA & Schmitt's
+    default one; for delivery (``shipment_type="01"``, the default) or when
+    left unset, the request uses the standard warehouse. Raises
+    :class:`ValueError` if set to anything other than 1-4 digits.
+
+    Caution: live testing against one account showed every value from "1" to
+    "30" resolving to the same warehouse (the account's home/default one) -
+    only omitting the field (delivery) gave a different one. It may be that
+    this field is a per-customer index into that customer's assigned
+    warehouses rather than a global Lagernummer, and this account only has
+    one assigned warehouse - unconfirmed. Don't assume a specific numeric
+    value reliably selects a specific warehouse without verifying against
+    the target account first.
+    """
+    if partner_warehouse is not None and not _PARTNER_WAREHOUSE_RE.fullmatch(partner_warehouse):
+        raise ValueError(
+            "partner_warehouse muss eine numerische Lagernummer mit maximal 4 Ziffern sein, "
+            f"erhalten: {partner_warehouse!r}"
+        )
+
     envelope = ET.Element(f"{{{SOAP_NS}}}Envelope")
     body = ET.SubElement(envelope, f"{{{SOAP_NS}}}Body")
     request = ET.SubElement(body, f"{{{REQUEST_NS}}}PRICE_AVAIL_REQUEST")
@@ -73,11 +110,20 @@ def build_request(
 
 
 def parse_response(xml_bytes: bytes) -> ParsedResponse:
-    """Parse a ``PRICE_AVAIL_RESPONSE`` SOAP envelope into result items."""
+    """Parse a ``PRICE_AVAIL_RESPONSE`` SOAP envelope into result items.
+
+    Tolerates one known FEGA & Schmitt server quirk: bare ``&`` characters in
+    text content (seen in ``PARTNER_WAREHOUSE_NAME`` values like "FEGA &
+    Schmitt Erlangen") that make the response technically invalid XML. If
+    strict parsing fails, we retry once with bare ``&`` escaped to ``&amp;``.
+    """
     try:
         root = ET.fromstring(xml_bytes)
-    except ET.ParseError as exc:
-        raise FegaTransportError(f"Ungültiges SOAP-XML in der Antwort: {exc}") from exc
+    except ET.ParseError:
+        try:
+            root = ET.fromstring(_BARE_AMPERSAND_RE.sub(b"&amp;", xml_bytes))
+        except ET.ParseError as exc:
+            raise FegaTransportError(f"Ungültiges SOAP-XML in der Antwort: {exc}") from exc
 
     body = root.find(f"{{{SOAP_NS}}}Body")
     if body is None:
