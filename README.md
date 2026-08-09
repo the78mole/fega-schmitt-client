@@ -26,11 +26,13 @@ FEGA & Schmitt ist ein deutscher Elektrogroßhändler. Kunden erhalten Zugriff a
 | **IDS-Schnittstelle** (BVBS/ITEK-Branchenstandard, v2.5) | Browser-Redirect + Hook-URL, halbautomatisch | Warenkorb-Austausch, Artikelsuche, Artikel-Deeplinks, Heizungslabel (ErP) | ⚠️ Später — passt nicht zu einer reinen Funktionsaufruf-API, siehe [Architektur](docs/architecture.md#7-bewusst-nicht-in-v1-abgedeckt) |
 | **UGL Version 4** (SHK-Branchenstandard) | Datei-basiert (FTP/Portal), ASCII Fixed-Length | Anfragen, Abrufaufträge, Auftragsbestätigungen als Batch-Dateien | ⚠️ Später — Batch/Polling statt Live-Antwort |
 
-Die vollständigen Original-Spezifikationen liegen als PDF in [docs/specs/](docs/specs/):
+Die Original-Spezifikationen sind **nicht Teil dieses Repositories** (`docs/specs/` steht in `.gitignore` — die PDFs gehören FEGA & Schmitt bzw. den jeweiligen Branchenverbänden und werden hier nicht weiterverbreitet). Als Kunde erhältst du sie direkt von FEGA & Schmitt:
 
-- `Schnittstellenbeschreibung_SOAP.pdf` — Preis-/Verfügbarkeits-Webservice (FEGA & Schmitt, Stand März 2016)
-- `IDS_Schnittstelle_2_5_final_NEU.pdf` — IDS-Schnittstelle für Warenkorb/Artikelsuche/Heizlabel (BVBS/ITEK, Version 2.5, Stand 02.11.2020)
-- `ugl4neutral.pdf` — UGL Version 4, Datenaustausch Handwerk ↔ SHK-Großhandel (GC-Gruppe, Stand 16.06.2006)
+- **Preis-/Verfügbarkeits-Webservice**: `Schnittstellenbeschreibung_SOAP.pdf` (Stand März 2016)
+- **IDS-Schnittstelle**: `IDS_Schnittstelle_2_5_final_NEU.pdf` (BVBS/ITEK, Version 2.5, Stand 02.11.2020)
+- **UGL Version 4**: `ugl4neutral.pdf` (GC-Gruppe, Stand 16.06.2006)
+
+Zum lokalen Entwickeln legst du die jeweilige PDF unter dem oben genannten Dateinamen in `docs/specs/` ab — der Code referenziert sie unter diesem Pfad.
 
 ## Öffentliche API (v1)
 
@@ -55,7 +57,7 @@ Details zu Datenmodell, Fehlerbehandlung und Architektur: siehe [docs/architectu
 
 ## IDS-Erweiterung: Warenkorb senden/empfangen
 
-`fega_schmitt_client.ids` implementiert den "Warenkorb senden"-Teil der IDS-Schnittstelle (BVBS/ITEK v2.5, halbautomatisch — Browserfenster + manuelle Nutzerinteraktion im FEGA-Shop, siehe [`docs/specs/IDS_Schnittstelle_2_5_final_NEU.pdf`](docs/specs/IDS_Schnittstelle_2_5_final_NEU.pdf), Abschnitt 5.2). Die Library baut nur die Daten — **kein** Browser-Handling, **kein** Webhook-Server; das übernimmt der Aufrufer (z. B. `fega-schmitt-mcp`):
+`fega_schmitt_client.ids` implementiert den "Warenkorb senden"-Teil der IDS-Schnittstelle (BVBS/ITEK v2.5, halbautomatisch — Browserfenster + manuelle Nutzerinteraktion im FEGA-Shop, siehe `IDS_Schnittstelle_2_5_final_NEU.pdf` — s.o., nicht im Repo enthalten —, Abschnitt 5.2). Die Library baut nur die Daten — **kein** Browser-Handling, **kein** Webhook-Server; das übernimmt der Aufrufer (z. B. `fega-schmitt-mcp`):
 
 ```python
 from decimal import Decimal

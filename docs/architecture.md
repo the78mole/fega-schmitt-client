@@ -1,6 +1,6 @@
 # Architektur
 
-> v1 (SOAP-Preis-/Verfügbarkeit) sowie eine erste IDS-Erweiterung (Warenkorb senden/empfangen) sind implementiert. `get_price_availability` wurde zusätzlich live gegen den echten FEGA & Schmitt-Server verifiziert (siehe Abschnitt 4). Dieses Dokument beschreibt sowohl die bestehende als auch die noch geplante Architektur, auf Basis der FEGA & Schmitt/Branchen-Spezifikationen in [`specs/`](specs/).
+> v1 (SOAP-Preis-/Verfügbarkeit) sowie eine erste IDS-Erweiterung (Warenkorb senden/empfangen) sind implementiert. `get_price_availability` wurde zusätzlich live gegen den echten FEGA & Schmitt-Server verifiziert (siehe Abschnitt 4). Dieses Dokument beschreibt sowohl die bestehende als auch die noch geplante Architektur, auf Basis der FEGA & Schmitt/Branchen-Spezifikationen (PDFs, nicht Teil dieses Repositories — siehe README, Abschnitt "Schnittstellen im Überblick", für Dateinamen und wie man als Kunde an sie kommt).
 
 ## 1. Kontext & Abgrenzung
 
@@ -31,7 +31,7 @@ FEGA & Schmitt stellt Kunden drei technisch unabhängige Schnittstellen zur Verf
 | Auth | Kundennummer + Shop-Kennwort im XML-Body je Anfrage | Kundennummer/Benutzername/Passwort als POST-Parameter beim Öffnen des Shops | Vermutlich FTP-Zugangsdaten (nicht in den ersten Seiten der Spec spezifiziert) |
 | Als Funktionsaufruf abbildbar? | **Ja** — klassischer Request/Response-API-Aufruf | **Nein, nicht direkt** — benötigt Browser-Kontext bzw. Nachbau der Shop-Formularlogik | **Nein, nicht direkt** — benötigt Scheduler/Polling |
 
-**Bezug zur OCI-Schnittstelle:** Der Rückkanal von IDS ("Formular-POST an die Hook-URL") ist laut Spezifikation explizit an die **OCI-Schnittstelle** (Open Catalog Interface — ursprünglich von SAP für Procurement-Punch-Out-Kataloge entwickelt, seither de-facto-Standard für Lieferanten-Webshop-Anbindungen an ERP-/Warenwirtschaftssysteme) angelehnt: "Die Übernahme der Daten erfolgt als Übertragung eines Formulars an die HOOK-URL analog der OCI Schnittstelle" (siehe [`specs/IDS_Schnittstelle_2_5_final_NEU.pdf`](specs/IDS_Schnittstelle_2_5_final_NEU.pdf), Abschnitt 5.1c/5.4f). Wichtige Einschränkung dieser Analogie: "reines" OCI überträgt pro Artikelposition einzelne Formularfelder (`NEW_ITEM-DESCRIPTION[n]`, `NEW_ITEM-QUANTITY[n]`, `NEW_ITEM-PRICE[n]`, …), während IDS den kompletten Warenkorb als ein einziges XML-Dokument in einem Formularfeld (`warenkorb`) überträgt. Nur der Transportmechanismus (Browser-Redirect + Formular-POST an eine Hook-/Rücksprung-URL) folgt dem OCI-Muster, das Datenformat ist eigenständig (siehe Abschnitt 7.1).
+**Bezug zur OCI-Schnittstelle:** Der Rückkanal von IDS ("Formular-POST an die Hook-URL") ist laut Spezifikation explizit an die **OCI-Schnittstelle** (Open Catalog Interface — ursprünglich von SAP für Procurement-Punch-Out-Kataloge entwickelt, seither de-facto-Standard für Lieferanten-Webshop-Anbindungen an ERP-/Warenwirtschaftssysteme) angelehnt: "Die Übernahme der Daten erfolgt als Übertragung eines Formulars an die HOOK-URL analog der OCI Schnittstelle" (siehe `IDS_Schnittstelle_2_5_final_NEU.pdf`, Abschnitt 5.1c/5.4f). Wichtige Einschränkung dieser Analogie: "reines" OCI überträgt pro Artikelposition einzelne Formularfelder (`NEW_ITEM-DESCRIPTION[n]`, `NEW_ITEM-QUANTITY[n]`, `NEW_ITEM-PRICE[n]`, …), während IDS den kompletten Warenkorb als ein einziges XML-Dokument in einem Formularfeld (`warenkorb`) überträgt. Nur der Transportmechanismus (Browser-Redirect + Formular-POST an eine Hook-/Rücksprung-URL) folgt dem OCI-Muster, das Datenformat ist eigenständig (siehe Abschnitt 7.1).
 
 **Konsequenz für den Zuschnitt:** v1 der Library deckt ausschließlich den SOAP-Preis-/Verfügbarkeitsservice als reine Python-Funktionsaufrufe ab. IDS und UGL4 werden in Abschnitt 7 als mögliche spätere Erweiterungen *derselben Library* skizziert (nicht als eigene Repos), da beide letztlich auch "FEGA & Schmitt ansprechen" — nur mit anderer Transportlogik dahinter.
 
@@ -78,7 +78,7 @@ sequenceDiagram
     Client-->>App: list[PriceAvailResultItem]
 ```
 
-1. Aufrufer (z. B. `fega-schmitt-mcp` oder ein eigenes Skript) ruft `client.get_price_availability(items, ...)` mit einer Liste von `PriceAvailRequestItem` auf (max. 1000 Positionen laut Spezifikation, siehe [`specs/Schnittstellenbeschreibung_SOAP.pdf`](specs/Schnittstellenbeschreibung_SOAP.pdf), Abschnitt "Allgemeiner Ablauf").
+1. Aufrufer (z. B. `fega-schmitt-mcp` oder ein eigenes Skript) ruft `client.get_price_availability(items, ...)` mit einer Liste von `PriceAvailRequestItem` auf (max. 1000 Positionen laut Spezifikation, siehe `Schnittstellenbeschreibung_SOAP.pdf`, Abschnitt "Allgemeiner Ablauf").
 2. `price_avail.py` baut über `_soap.py` eine `PRICE_AVAIL_REQUEST`-Nachricht:
    - `PREFIX`: Firmennummer ("50"), Kundennummer, Shop-Kennwort, eine pro Aufruf generierte `TRANSACTION_ID`
    - `HEADER`: Versandart (Lieferung/Abholung), Zielwährung ("EUR"), optional PLZ/Länderkennzeichen für lieferabhängige Verfügbarkeit
@@ -90,7 +90,7 @@ sequenceDiagram
 
 ## 4. Fehler- und Hinweisbehandlung (Returncodes)
 
-Aus [`specs/Schnittstellenbeschreibung_SOAP.pdf`](specs/Schnittstellenbeschreibung_SOAP.pdf), Abschnitt 4:
+Aus `Schnittstellenbeschreibung_SOAP.pdf`, Abschnitt 4:
 
 | Prefix | Bedeutung | Abbildung im Ergebnis |
 |---|---|---|
@@ -146,7 +146,7 @@ Die Felder orientieren sich 1:1 an der XML-Struktur aus der Spezifikation (Absch
 
 ### 7.1 IDS-Schnittstelle (BVBS/ITEK, v2.5)
 
-Beschrieben in [`specs/IDS_Schnittstelle_2_5_final_NEU.pdf`](specs/IDS_Schnittstelle_2_5_final_NEU.pdf). Diese Schnittstelle ist ein **Branchenstandard**, kein FEGA & Schmitt-spezifisches Protokoll — ob und wie FEGA & Schmitt ihn im eigenen Webshop implementiert, ist ungeklärt (offener Punkt, siehe README). Zum Rückkanal per Hook-URL und dem Bezug zu OCI siehe Abschnitt 1.
+Beschrieben in `IDS_Schnittstelle_2_5_final_NEU.pdf`. Diese Schnittstelle ist ein **Branchenstandard**, kein FEGA & Schmitt-spezifisches Protokoll — ob und wie FEGA & Schmitt ihn im eigenen Webshop implementiert, ist ungeklärt (offener Punkt, siehe README). Zum Rückkanal per Hook-URL und dem Bezug zu OCI siehe Abschnitt 1.
 
 **Umgesetzt:** `Warenkorb senden` (Aktion `WKS`) und das Parsen eines empfangenen Warenkorbs (`Warenkorb empfangen`, Aktion `WKE`), als eigenes Untermodul `fega_schmitt_client.ids` mit `build_cart_request(cart, shop_url, hook_url=None, ...)` und `parse_cart_callback(xml)`. Keine Browser-Automatisierung nötig: `build_cart_request` liefert nur die Formularfelder für den `multipart/form-data`-POST (inkl. XML-Warenkorb im `warenkorb`-Feld) — das tatsächliche Öffnen im Browser bzw. der Empfang am Hook-URL-Endpunkt bleibt bewusst außerhalb der Library (Aufgabe des Aufrufers, z. B. `fega-schmitt-mcp`, siehe Abschnitt 1). `hook_url` ist optional: ohne sie lässt sich der Warenkorb weiterhin öffnen, nur der automatische Rücklauf entfällt dann.
 
@@ -158,7 +158,7 @@ Warum (noch) nicht der Rest der IDS-Schnittstelle:
 
 ### 7.2 UGL Version 4
 
-Beschrieben in [`specs/ugl4neutral.pdf`](specs/ugl4neutral.pdf). Ebenfalls ein **Branchenstandard** (SHK-Großhandel/GC-Gruppe), keine FEGA & Schmitt-spezifische Erfindung.
+Beschrieben in `ugl4neutral.pdf`. Ebenfalls ein **Branchenstandard** (SHK-Großhandel/GC-Gruppe), keine FEGA & Schmitt-spezifische Erfindung.
 
 Warum nicht v1:
 
@@ -169,7 +169,7 @@ Warum nicht v1:
 
 ### 7.3 DATANORM v5 (Artikel-Stammdaten/Preislisten)
 
-Kein Live-Request/Response-Protokoll wie SOAP, sondern ein **Branchenstandard für den Austausch von Artikel-Stammdaten und Preislisten** als Datei — ähnlich UGL4 im Betriebsmodell (Datei statt API-Aufruf), aber ein anderes, älteres und deutlich weiter verbreitetes Format. Die SOAP-Spezifikation selbst verweist darauf als Quelle der `MATERIAL_NUMBER`: "die FEGA & Schmitt – Artikelnummer, die Sie über eine andere Schnittstelle (z.B. DATANORM) bezogen haben" (siehe [`specs/Schnittstellenbeschreibung_SOAP.pdf`](specs/Schnittstellenbeschreibung_SOAP.pdf), Abschnitt 1). DATANORM ist damit nicht nur ein optionales Zusatzformat, sondern die naheliegende Quelle für genau die Artikelnummern, die `get_price_availability` als Eingabe benötigt.
+Kein Live-Request/Response-Protokoll wie SOAP, sondern ein **Branchenstandard für den Austausch von Artikel-Stammdaten und Preislisten** als Datei — ähnlich UGL4 im Betriebsmodell (Datei statt API-Aufruf), aber ein anderes, älteres und deutlich weiter verbreitetes Format. Die SOAP-Spezifikation selbst verweist darauf als Quelle der `MATERIAL_NUMBER`: "die FEGA & Schmitt – Artikelnummer, die Sie über eine andere Schnittstelle (z.B. DATANORM) bezogen haben" (siehe `Schnittstellenbeschreibung_SOAP.pdf`, Abschnitt 1). DATANORM ist damit nicht nur ein optionales Zusatzformat, sondern die naheliegende Quelle für genau die Artikelnummern, die `get_price_availability` als Eingabe benötigt.
 
 Status: DATANORM v5-Zugang sowie Offline-Zugang (FTP) bei FEGA & Schmitt sind beantragt, aber noch nicht bestätigt und keine Format-Spezifikation im Repo vorhanden (offener Punkt, siehe README). Sobald Zugangsdaten und Spezifikation vorliegen, ist ein eigenes Untermodul `fega_schmitt_client.datanorm` mit reinen Datei-Parsing-Funktionen (analog zu UGL4, z. B. `parse_price_file(...)`) der naheliegende Zuschnitt — der FTP-Transport selbst bliebe aus denselben Gründen wie bei UGL4 außerhalb der Library.
 
