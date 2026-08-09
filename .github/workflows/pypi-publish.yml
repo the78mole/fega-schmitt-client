@@ -1,0 +1,202 @@
+name: Create Release and Publish to PyPI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/pypi-publish.yml'
+  workflow_dispatch:
+    inputs:
+      publish_target:
+        description: 'Publish target'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - pypi-only
+          - none
+
+jobs:
+  version:
+    name: Calculate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.semver.outputs.version }}
+      version_tag: ${{ steps.semver.outputs.version_tag }}
+
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Calculate semantic version
+      id: semver
+      uses: paulhatch/semantic-version@v6.0.3
+      with:
+        tag_prefix: "v"
+        major_pattern: "/(feat|fix|refactor)!:/"
+        minor_pattern: "/^feat:/"
+        version_format: "${major}.${minor}.${patch}"
+        bump_each_commit: true
+        search_commit_body: true
+
+    - name: Show version
+      run: |
+        echo "Version: ${{ steps.semver.outputs.version }}"
+        echo "Version Tag: ${{ steps.semver.outputs.version_tag }}"
+        cat >> $GITHUB_STEP_SUMMARY <<EOF
+        ## 📦 Neue Version berechnet
+
+        **Version:** \`${{ steps.semver.outputs.version }}\`
+        **Git-Tag:** \`${{ steps.semver.outputs.version_tag }}\`
+        EOF
+
+  create-release:
+    name: Create GitHub Release
+    needs: [version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Create Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release create ${{ needs.version.outputs.version_tag }} \
+          --title "fega-schmitt-client ${{ needs.version.outputs.version }}" \
+          --notes "## fega-schmitt-client ${{ needs.version.outputs.version }}
+
+        Python-Client für die B2B-Schnittstellen von FEGA & Schmitt Elektrogroßhandel.
+
+        ### Installation
+
+        \`\`\`bash
+        pip install fega-schmitt-client==${{ needs.version.outputs.version }}
+        # oder als CLI-Tool:
+        uv tool install fega-schmitt-client==${{ needs.version.outputs.version }}
+        \`\`\`
+        " \
+          --latest
+
+        cat >> $GITHUB_STEP_SUMMARY <<EOF
+        ## 🏷️ GitHub Release erstellt
+
+        **Release:** [${{ needs.version.outputs.version_tag }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.version.outputs.version_tag }})
+        EOF
+
+  build:
+    name: Build fega-schmitt-client distribution
+    needs: [version]
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.event.inputs.publish_target == 'all' || github.event.inputs.publish_target == 'pypi-only'))
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.11"
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+
+    - name: Set package version
+      # GOTCHA: pyproject.toml has a plain static `version = "..."` under
+      # [project] (no hatch-vcs/dynamic versioning) - `hatch version <x>`
+      # refuses to touch it, so the version line is rewritten directly.
+      run: |
+        python3 -c "
+        import re, pathlib
+        path = pathlib.Path('pyproject.toml')
+        text = path.read_text()
+        new_text, count = re.subn(r'(?m)^version = \"[^\"]*\"', 'version = \"${{ needs.version.outputs.version }}\"', text, count=1)
+        assert count == 1, 'expected exactly one version = \"...\" line in [project]'
+        path.write_text(new_text)
+        "
+        grep '^version = ' pyproject.toml
+
+    - name: Build package
+      run: python -m build
+
+    - name: Check distribution
+      run: |
+        twine check dist/*
+        cat >> $GITHUB_STEP_SUMMARY <<EOF
+        ## 🔨 fega-schmitt-client Build
+
+        **Version:** \`${{ needs.version.outputs.version }}\`
+        \`\`\`
+        $(ls -lh dist/)
+        \`\`\`
+        EOF
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: fega-schmitt-client-dist
+        path: dist/
+
+  publish-to-pypi:
+    name: Publish fega-schmitt-client to PyPI
+    needs: [version, build]
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/fega-schmitt-client
+
+    permissions:
+      id-token: write     # required for OIDC Trusted Publishing - no API token/secret needed
+
+    steps:
+    - name: Download distributions
+      uses: actions/download-artifact@v8
+      with:
+        name: fega-schmitt-client-dist
+        path: dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+
+    - name: Add PyPI Summary
+      run: |
+        cat >> $GITHUB_STEP_SUMMARY <<EOF
+        ## 🚀 fega-schmitt-client PyPI Veröffentlichung
+
+        **Package:** [fega-schmitt-client](https://pypi.org/project/fega-schmitt-client/)
+        **Version:** \`${{ needs.version.outputs.version }}\`
+        EOF
+
+  summary:
+    name: Release Summary
+    needs: [version, create-release, build, publish-to-pypi]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Create Summary
+      run: |
+        cat >> $GITHUB_STEP_SUMMARY <<EOF
+        ## 🎉 Release Workflow Abgeschlossen
+
+        **Version:** \`${{ needs.version.outputs.version }}\`
+        **Git Tag:** \`${{ needs.version.outputs.version_tag }}\`
+
+        ### Status
+
+        - GitHub Release: ${{ needs.create-release.result == 'success' && '✅' || '❌' }}
+        - PyPI Publish: ${{ needs.publish-to-pypi.result == 'success' && '✅' || needs.publish-to-pypi.result == 'skipped' && '⏭️' || '❌' }}
+        EOF

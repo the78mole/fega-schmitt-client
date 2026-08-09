@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --all-groups
+      - run: uv run pytest --cov --cov-report=term-missing --cov-report=xml
+      - name: Coverage summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## 🧪 Test coverage (Python ${{ matrix.python-version }})
+          \`\`\`
+          $(uv run coverage report)
+          \`\`\`
+          EOF
