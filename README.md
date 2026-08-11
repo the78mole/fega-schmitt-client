@@ -7,7 +7,7 @@
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-> **Status: v1 implementiert (SOAP-Preis-/Verfügbarkeitsservice) + erste IDS-Erweiterung (Warenkorb senden/empfangen), noch nicht auf PyPI veröffentlicht.** UGL4 sowie IDS-Artikeldeeplink/-suche/Heatinglabel sind bewusst noch nicht umgesetzt, siehe [Architektur](docs/architecture.md#7-bewusst-nicht-in-v1-abgedeckt). Der SOAP-Preis-/Verfügbarkeitsservice ist sowohl gegen die Spezifikation/einen Mock-Server (automatisierte Tests) als auch **live gegen den echten FEGA & Schmitt-Server** verifiziert (siehe "Offene Punkte" für Details zum manuellen Testaufruf).
+> **Status: v1 implementiert (SOAP-Preis-/Verfügbarkeitsservice) + IDS-Erweiterung (Warenkorb senden/empfangen) + `web`-Erweiterung (Webshop-Zugriff: Suche, Artikeldetail, Warenkorb, Bestellungen, Favoriten, Aktionsangebote), noch nicht auf PyPI veröffentlicht.** UGL4 sowie IDS-Artikeldeeplink/-suche/Heatinglabel sind bewusst noch nicht umgesetzt, siehe [Architektur](docs/architecture.md#7-bewusst-nicht-in-v1-abgedeckt) und [PLANNED_FEATURES.md](PLANNED_FEATURES.md). Der SOAP-Preis-/Verfügbarkeitsservice ist sowohl gegen die Spezifikation/einen Mock-Server (automatisierte Tests) als auch **live gegen den echten FEGA & Schmitt-Server** verifiziert (siehe "Offene Punkte" für Details zum manuellen Testaufruf). Die `web`-Erweiterung ist **kein** von FEGA & Schmitt dokumentiertes Interface — siehe [docs/extensions.md](docs/extensions.md) für Details, Recherchestand und offene Fragen, bevor sie produktiv genutzt wird.
 
 Eine reine Python-Library für den Zugriff auf die B2B-Schnittstellen von **FEGA & Schmitt Elektrogroßhandel** — allen voran den Preis-/Verfügbarkeitsservice. Kein MCP-, kein KI-spezifischer Code: diese Library ist eigenständig nutzbar (Skripte, andere Services, Warenwirtschaftssysteme) und wird zusätzlich vom Schwester-Projekt `fega-schmitt-mcp` (separates Repository unter `GIT/MCP/`) als MCP-Interface verpackt.
 
@@ -82,6 +82,25 @@ updated_cart = parse_cart_callback(received_xml)
 
 Ohne `hook_url` funktioniert das Senden weiterhin — der Nutzer schließt den Vorgang dann manuell im Browser ab, es gibt nur keinen automatischen Rücklauf.
 
+## Web-Erweiterung: Webshop-Zugriff
+
+`fega_schmitt_client.web` greift auf den Webshop (`shop.fega.de`) selbst zu — Artikelsuche (Artikelnummer/EAN/Herstellerteilenummer/Freitext), Artikeldetail (Kategorie, Hersteller, Bilder), Warenkorb, Bestellungen, Favoriten und Aktionsangebote. **Kein offizielles FEGA & Schmitt-Interface** wie SOAP oder IDS, sondern eine Erweiterung gegen das Shop-Frontend — siehe [docs/extensions.md](docs/extensions.md) für den vollständigen Recherchestand, was verifiziert vs. Best-Effort ist, und offene Punkte:
+
+```python
+from fega_schmitt_client.web import WebClient
+
+with WebClient(customer_number="9920", shop_password="...") as web:
+    results = web.search("H07RN-F 5G16 TR500")   # Artikelnummer, EAN, Herstellerteilenummer, Freitext
+    detail = web.get_article_detail(results[0].material_number)
+    print(detail.category_name, detail.ean, detail.manufacturer_item_number)
+
+    images = web.get_article_images(results[0].material_number)
+    favorites = web.get_favorite_list()
+    orders = web.get_order_list()
+```
+
+Dieselben Zugangsdaten wie `FegaSchmittClient`. Der Kategoriebaum ([docs/fega_categories.md](docs/fega_categories.md)) liegt als JSON-Baseline im Package (`fega_schmitt_client/web/data/categories.json`) und wird zur ID-Normalisierung genutzt. `WebClient` hält anders als `FegaSchmittClient` eine langlebige Session über die gesamte Objektlebensdauer (`with`-Block bzw. `close()` verwenden).
+
 ## CLI
 
 Als Kommandozeilen-Tool `fega` installierbar, ohne dass ein eigenes venv angelegt werden muss:
@@ -92,6 +111,35 @@ fega --customer-number 9920 --shop-password "..." price-avail 0815:200:MTR 4711
 ```
 
 Alternativ per Umgebungsvariablen (`FEGA_CUSTOMER_NUMBER`, `FEGA_SHOP_PASSWORD`) statt Optionen. `-j`/`--json` liefert JSON statt Tabellenausgabe. `fega --help` bzw. `fega price-avail --help` zeigen alle Optionen.
+
+### Entwicklungsversion direkt aus dem Repo
+
+Ohne `uv tool install` (das eine eingefrorene Kopie installiert, die erst nach `uv tool install --reinstall .` erneut lokale Änderungen sieht) reicht im Repo-Root:
+
+```bash
+uv run fega web search "H07RN-F 5G16 TR500"
+```
+
+`uv run` synct die venv automatisch gegen den aktuellen Repo-Stand — jede Code-Änderung ist sofort wirksam, kein Reinstall nötig.
+
+**Zugangsdaten beisteuern**, in der Praktikabilität absteigend:
+
+- Vorhandene `.env`-Datei direkt einlesen lassen (lädt `uv run` nicht automatisch, daher der Flag): `uv run --env-file .env fega web ...`
+- Umgebungsvariablen im Shell-Environment setzen (`export FEGA_CUSTOMER_NUMBER=...` bzw. `export FEGA_SHOP_PASSWORD=...`, oder einmalig `set -a; source .env; set +a`)
+- Explizite Optionen **vor** dem Subcommand, da sie auf der Top-Level-Gruppe sitzen: `uv run fega --customer-number 9920 --shop-password "..." web search "..."`
+
+Die Web-Erweiterung ist unter `fega web` erreichbar (dieselben Zugangsdaten/Umgebungsvariablen):
+
+```bash
+fega web search "H07RN-F 5G16 TR500"
+fega web article 104260 --json
+fega web cable-lengths 104260
+fega web cutting-fee 104260
+fega web favorites
+fega web set-article-number 104260 MEINE-NUMMER
+```
+
+`fega web --help` zeigt alle Unterbefehle (Suche, Artikeldetails/-attribute/-bilder, Zubehör/Varianten/Alternativen, Kabellängen/Schnittkosten, Warenkorb, Bestellungen, Aktionsangebote, eigene Artikelnummer lesen/setzen).
 
 ## Installation
 
@@ -121,6 +169,7 @@ uv run pre-commit run --all-files
 - Artikeldeeplink, Artikelsuche, Login-Informationen, Schnittstellenversion und Heatinglabel (restliche IDS-Aktionen) sind noch nicht umgesetzt
 - **DATANORM v5 + Offline-Zugang (FTP)**: bei FEGA & Schmitt beantragt, aber Zugangsdaten und Format-Spezifikation liegen noch nicht vor — siehe [docs/architecture.md](docs/architecture.md#73-datanorm-v5-artikel-stammdatenpreislisten). DATANORM ist die von der SOAP-Spec selbst referenzierte Quelle der Artikelnummern für `get_price_availability`, daher relevanter als "nur" ein weiteres Zusatzformat
 - Ob UGL4 für dieses Projekt relevant ist, und falls ja: FTP-Zugangsdaten/Verzeichnis
+- **`web`-Erweiterung**: einige Endpunkte (formale Preisangebote/Quotes) sind noch nicht gefunden, siehe [docs/extensions.md](docs/extensions.md) Abschnitt 5 und [PLANNED_FEATURES.md](PLANNED_FEATURES.md)
 - Endgültiger PyPI-/Modulname (`fega-schmitt-client` ist ein Arbeitstitel)
 - PyPI Trusted Publishing muss einmalig manuell auf pypi.org eingerichtet werden (Workflow-Datei `pypi-publish.yml`, Environment `pypi`), bevor der Release-Workflow tatsächlich veröffentlichen kann
 
