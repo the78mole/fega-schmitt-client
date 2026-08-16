@@ -159,6 +159,20 @@ def test_parse_article_builds_full_tree_from_one_page():
     assert article.alternatives == ["6169773", "9641674"]
     assert article.cross_sell == ["051431", "051432"]
     assert article.documents == []
+    # Not derivable from the detail page - the caller supplies it, see below.
+    assert article.description is None
+
+
+def test_parse_article_takes_the_description_from_the_caller():
+    fetched_at = datetime(2026, 8, 11, 12, 0, tzinfo=timezone.utc)
+    article = _parse.parse_article(
+        ARTICLE_DETAIL_HTML,
+        "051430",
+        fetched_at,
+        description="NEUT Gummischlauchleitung H07RN-F 5G16 TR500m schwarz",
+    )
+
+    assert article.description == "NEUT Gummischlauchleitung H07RN-F 5G16 TR500m schwarz"
 
 
 def test_article_to_dict_is_json_serializable_with_nested_category_and_images():
