@@ -85,6 +85,13 @@ class Article:
 
     ``cutting_fee`` (extensions.md 2.10) is only present on cable articles
     that are cut from a drum - None for everything else.
+
+    ``description`` is the shop's article title (the same string
+    ``ArticleSearchResult.description`` carries). The detail page itself
+    doesn't state it in a form worth scraping, so it is threaded through
+    from the search step that ``WebClient.get_article()`` performs anyway
+    to find the detail URL. It is None when an ``Article`` is built
+    straight from HTML via ``parse_article()`` without that search.
     """
 
     material_number: str
@@ -97,6 +104,7 @@ class Article:
     category_id: str | None
     category_name: str | None
     own_article_number: str | None
+    description: str | None = None
     cutting_fee: Decimal | None = None
     attributes: dict[str, str] = field(default_factory=dict)
     images: list[ArticleImage] = field(default_factory=list)
@@ -113,6 +121,7 @@ class Article:
         return {
             "material_number": self.material_number,
             "fetched_at": self.fetched_at.isoformat(),
+            "description": self.description,
             "own_article_number": self.own_article_number,
             "ean": self.ean,
             "manufacturer_item_number": self.manufacturer_item_number,

@@ -139,6 +139,20 @@ def test_get_article_returns_full_tree_from_two_requests():
 
 
 @respx.mock
+def test_get_article_carries_description_over_from_the_search_tile():
+    respx.post(LOGIN_URL).mock(return_value=httpx.Response(302, headers=LOGIN_SUCCESS_HEADERS))
+    respx.get(SHOP_URL).mock(return_value=httpx.Response(200, text=SEARCH_RESULTS_HTML))
+    respx.get(DETAIL_URL).mock(return_value=httpx.Response(200, text=ARTICLE_DETAIL_HTML))
+
+    client = WebClient(customer_number="9920", shop_password="geheim")
+    article = client.get_article("121350")
+
+    # The search step happens anyway to find the detail URL; its tile is the
+    # only place the article title appears, so it must not be dropped.
+    assert article.description == "NEUT Gummischlauchleitung H07RN-F 5G16 TR500m schwarz"
+
+
+@respx.mock
 def test_get_article_category_returns_id_and_name_from_detail_page():
     respx.post(LOGIN_URL).mock(return_value=httpx.Response(302, headers=LOGIN_SUCCESS_HEADERS))
     respx.get(SHOP_URL).mock(return_value=httpx.Response(200, text=SEARCH_RESULTS_HTML))

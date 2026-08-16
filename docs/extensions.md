@@ -360,6 +360,8 @@ class ArticleImage:
 
 `search()` liefert `list[ArticleSearchResult]` ohne EAN/Herstellerteilenummer/Kategorie (die Trefferliste enthält sie nicht). Wer diese Felder braucht, ruft zusätzlich `get_article_detail(material_number)` auf.
 
+Umgekehrt gilt: Die Artikelbezeichnung steht **nur** in der Trefferkachel (`data-compare[1]`), nicht in den Detailseiten-Feldern. `get_article()` durchsucht ohnehin zuerst (um an die Detail-URL zu kommen) und reicht die Bezeichnung der Kachel als `Article.description` durch, statt sie wegzuwerfen — sonst bräuchte jeder Aufrufer, der Nummer *und* Namen will, einen zweiten `search()`-Aufruf. `parse_article()` allein (ohne Suchschritt) lässt das Feld auf `None`.
+
 ## 9. Implementierung
 
 ```mermaid

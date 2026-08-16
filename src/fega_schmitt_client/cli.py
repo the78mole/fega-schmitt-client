@@ -228,6 +228,7 @@ def web_article(ctx: click.Context, material_number: str, json_flag: bool) -> No
         click.echo(json.dumps(article.to_dict(), indent=2, ensure_ascii=False))
         return
     click.echo(f"{article.material_number}  EAN={article.ean or '-'}")
+    click.echo(f"  Bezeichnung: {article.description or '-'}")
     click.echo(f"  Hersteller: {article.supplier_name or '-'} ({article.manufacturer_item_number or '-'})")
     click.echo(f"  Kategorie: {article.category_name or '-'} ({article.category_id or '-'})")
     click.echo(f"  Meine Artikelnummer: {article.own_article_number or '-'}")
