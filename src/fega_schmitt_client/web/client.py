@@ -116,8 +116,8 @@ class WebClient:
         return _parse.parse_tile_list(response.text)
 
     def get_article(self, material_number: str) -> Article:
-        """Fetch everything this library knows about an article - EAN,
-        manufacturer numbers, category, own article number, technical
+        """Fetch everything this library knows about an article - description,
+        EAN, manufacturer numbers, category, own article number, technical
         attributes, images, accessories, variants, alternatives, cross-sell
         (docs/extensions.md 2.9) - from a single detail-page fetch.
 
@@ -127,10 +127,16 @@ class WebClient:
         requests, not one - but the same two requests as any single one of
         the narrower get_article_*() methods below, which are now thin
         accessors on top of this method's result rather than doing their
-        own fetch+parse.
+        own fetch+parse. The search result's ``description`` (the article
+        title) is carried over into the Article rather than discarded.
         """
-        response = self._get_product_page(material_number)
-        return _parse.parse_article(response.text, material_number, fetched_at=datetime.now(timezone.utc))
+        response, tile = self._get_product_page(material_number)
+        return _parse.parse_article(
+            response.text,
+            material_number,
+            fetched_at=datetime.now(timezone.utc),
+            description=tile.description,
+        )
 
     def get_article_detail(self, material_number: str) -> ArticleDetail:
         """Shortcut for the EAN/manufacturer-number/category/own-article-number
@@ -309,12 +315,15 @@ class WebClient:
 
     # --- Internal HTTP/session handling ---
 
-    def _get_product_page(self, material_number: str) -> httpx.Response:
+    def _get_product_page(self, material_number: str) -> tuple[httpx.Response, ArticleSearchResult]:
+        """Fetch an article's detail page, returning it together with the
+        search tile that pointed here - the tile carries the article's
+        description, which the detail page doesn't state separately."""
         results = self.search(material_number)
         match = next((r for r in results if r.material_number == material_number and r.detail_url), None)
         if match is None:
             raise FegaScrapingError(f"Konnte keine Artikelseite für Artikelnummer {material_number!r} finden")
-        return self._raw_get(match.detail_url)
+        return self._raw_get(match.detail_url), match
 
     def _ensure_login(self) -> None:
         if self._logged_in:
