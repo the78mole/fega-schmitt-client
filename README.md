@@ -152,7 +152,7 @@ uv run --env-file .env fega datanorm upload datanorm.zip
 uv run --env-file .env fega datanorm upload datanorm.001 datanorm.wrg datpreis.001 --date 2026-10-21
 ```
 
-Jede Datei landet unter `<präfix>/<YYYY-MM-DD>/<dateiname>` (Präfix per `--prefix`, Default `datanorm`). Ohne `--date` gilt das Änderungsdatum der Datei. `unzip` übernimmt die Zeitstempel aus dem Archiv, entpackte Dateien tragen also das Lieferdatum. `--key` setzt den Objekt-Key für eine einzelne Datei komplett selbst.
+Jede Datei landet unter `<präfix>/<YYYY-MM-DD>/<dateiname>` (Präfix per `--prefix`, Default `fega`), z. B. `s3://datanorm/fega/2026-10-21/datanorm.zip` mit `FEGA_S3_BUCKET=datanorm`. So kann ein Bucket die DATANORM-Archive mehrerer Lieferanten aufnehmen. Ohne `--date` gilt das Änderungsdatum der Datei. `unzip` übernimmt die Zeitstempel aus dem Archiv, entpackte Dateien tragen also das Lieferdatum. `--key` setzt den Objekt-Key für eine einzelne Datei komplett selbst.
 
 ## Installation
 

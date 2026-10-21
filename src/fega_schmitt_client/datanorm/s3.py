@@ -11,7 +11,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-DEFAULT_PREFIX = "datanorm"
+# The bucket is meant to be shared by several suppliers' DATANORM archives;
+# this client files its deliveries under its own supplier prefix.
+DEFAULT_PREFIX = "fega"
 
 _CONTENT_TYPES = {".zip": "application/zip"}
 

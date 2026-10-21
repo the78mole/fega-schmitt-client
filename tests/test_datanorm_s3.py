@@ -15,7 +15,7 @@ from fega_schmitt_client.datanorm.s3 import make_client
 S3_ENV = {
     "FEGA_S3_ENDPOINT_URL": "https://s3.example.test",
     "FEGA_S3_REGION": "garage",
-    "FEGA_S3_BUCKET": "fega",
+    "FEGA_S3_BUCKET": "datanorm",
     "FEGA_S3_ACCESS_KEY_ID": "GKtest",
     "FEGA_S3_SECRET_ACCESS_KEY": "not-a-real-secret",
 }
@@ -49,14 +49,14 @@ def delivery(tmp_path):
 def _config() -> S3Config:
     return S3Config(
         endpoint_url="https://s3.example.test",
-        bucket="fega",
+        bucket="datanorm",
         access_key_id="GKtest",
         secret_access_key="not-a-real-secret",
     )
 
 
 def test_default_object_key_uses_modification_date(delivery):
-    assert default_object_key(delivery) == "datanorm/2026-10-21/datanorm.zip"
+    assert default_object_key(delivery) == "fega/2026-10-21/datanorm.zip"
 
 
 def test_default_object_key_with_explicit_date_and_prefix(delivery):
@@ -72,12 +72,12 @@ def test_upload_file_sets_content_type(delivery, tmp_path):
     other = tmp_path / "datpreis.001"
     other.write_bytes(b"P;")
 
-    assert upload_file(delivery, "k/datanorm.zip", _config(), client=client) == "s3://fega/k/datanorm.zip"
+    assert upload_file(delivery, "k/datanorm.zip", _config(), client=client) == "s3://datanorm/k/datanorm.zip"
     upload_file(other, "k/datpreis.001", _config(), client=client)
 
     assert client.uploads == [
-        (str(delivery), "fega", "k/datanorm.zip", {"ContentType": "application/zip"}),
-        (str(other), "fega", "k/datpreis.001", {"ContentType": "application/octet-stream"}),
+        (str(delivery), "datanorm", "k/datanorm.zip", {"ContentType": "application/zip"}),
+        (str(other), "datanorm", "k/datpreis.001", {"ContentType": "application/octet-stream"}),
     ]
 
 
@@ -97,8 +97,8 @@ def test_cli_upload_from_env(fake_client, delivery):
     result = CliRunner().invoke(cli.main, ["datanorm", "upload", str(delivery)], env=S3_ENV)
 
     assert result.exit_code == 0, result.output
-    assert fake_client.uploads[0][1:3] == ("fega", "datanorm/2026-10-21/datanorm.zip")
-    assert "s3://fega/datanorm/2026-10-21/datanorm.zip" in result.output
+    assert fake_client.uploads[0][1:3] == ("datanorm", "fega/2026-10-21/datanorm.zip")
+    assert "s3://datanorm/fega/2026-10-21/datanorm.zip" in result.output
 
 
 def test_cli_upload_multiple_files_with_date(fake_client, delivery, tmp_path):
@@ -111,8 +111,8 @@ def test_cli_upload_multiple_files_with_date(fake_client, delivery, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert [u[2] for u in fake_client.uploads] == [
-        "datanorm/2026-08-10/datanorm.zip",
-        "datanorm/2026-08-10/datanorm.wrg",
+        "fega/2026-08-10/datanorm.zip",
+        "fega/2026-08-10/datanorm.wrg",
     ]
 
 
