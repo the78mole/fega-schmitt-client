@@ -11,7 +11,7 @@ import dataclasses
 import json
 import sys
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -21,8 +21,11 @@ from . import FegaSchmittClient, PriceAvailRequestItem, PriceAvailResultItem
 from .datanorm import Changes, S3Config, default_object_key, import_delivery, upload_file
 from .datanorm.s3 import DEFAULT_PREFIX
 from .datanorm.s3 import make_client as make_s3_client
+from .datanorm.store import DEFAULT_SEARCH_LIMIT, DatanormStore
+from .lookup import ArticleInfo, ArticleLookup, ArticleNotFoundError
 from .price_avail import DEFAULT_ENDPOINT
 from .web import ArticleSearchResult, WebClient
+from .web.cache import DEFAULT_MAX_AGE, WebArticleCache
 from .web.client import DEFAULT_SECOND_CHOICE_DEAL_ID
 from .web.session import DEFAULT_MIN_REQUEST_INTERVAL
 
@@ -147,6 +150,179 @@ def _result_to_json(result: PriceAvailResultItem) -> dict:
     return data
 
 
+_json_option = click.option("--json", "-j", "json_flag", is_flag=True, help="JSON-Ausgabe.")
+
+
+# --- Combined lookup (fega_schmitt_client.lookup) ---
+#
+# DATANORM database first, then the SOAP service, the webshop last. Without
+# shop credentials only DATANORM is used; that is not an error.
+
+
+_db_option = click.option(
+    "--db",
+    "db_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    envvar="FEGA_DATANORM_DB",
+    help="DATANORM-Datenbank. Default: ~/.cache/fega-schmitt-client/datanorm.db. Auch als FEGA_DATANORM_DB.",
+)
+
+
+@contextlib.contextmanager
+def _lookup(ctx: click.Context, db_path: Path | None):
+    customer_number = ctx.obj["customer_number"]
+    shop_password = ctx.obj["shop_password"]
+    soap = web_factory = None
+    if customer_number and shop_password:
+        soap = FegaSchmittClient(
+            partner_purchaser=customer_number, legitimation_id=shop_password, endpoint=ctx.obj["endpoint"]
+        )
+
+        def web_factory() -> WebClient:
+            return WebClient(
+                customer_number=customer_number,
+                shop_password=shop_password,
+                min_request_interval=ctx.obj.get("web_request_interval", DEFAULT_MIN_REQUEST_INTERVAL),
+                persist_session=ctx.obj.get("web_persist_session", True),
+            )
+
+    try:
+        with ArticleLookup(
+            datanorm=DatanormStore.open(db_path),
+            soap=soap,
+            web_factory=web_factory,
+            web_cache=WebArticleCache(),
+        ) as lookup:
+            yield lookup
+    except Exception as exc:  # noqa: BLE001 - CLI error boundary, converts any failure to a clean message
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
+
+@main.command("search")
+@click.argument("query")
+@click.option("--limit", type=click.IntRange(min=1), default=DEFAULT_SEARCH_LIMIT, show_default=True)
+@_db_option
+@_json_option
+@click.pass_context
+def search(ctx: click.Context, query: str, limit: int, db_path: Path | None, json_flag: bool) -> None:
+    """Artikel suchen: zuerst in der DATANORM-Datenbank, im Webshop nur ohne Treffer.
+
+    Findet in DATANORM Artikelnummer, EAN und Herstellernummern exakt sowie
+    Artikel, deren Kurztexte alle Suchwörter enthalten.
+    """
+    with _lookup(ctx, db_path) as lookup:
+        hits = lookup.search(query, limit)
+    if json_flag:
+        _echo_json(hits)
+        return
+    if not hits:
+        click.echo("Keine Treffer.")
+        return
+    for hit in hits:
+        click.echo(f"{hit.material_number}  {hit.description or '-'}  [{hit.source}]")
+
+
+@main.command("article")
+@click.argument("material_number")
+@click.option("--no-web", is_flag=True, help="Webshop nicht abfragen (keine Bilder, Attribute, Zubehör, ...).")
+@click.option("--refresh", is_flag=True, help="Shop-Daten neu abrufen statt aus dem Cache (web.db).")
+@click.option(
+    "--max-age",
+    type=click.IntRange(min=0),
+    default=DEFAULT_MAX_AGE.days,
+    show_default=True,
+    help="Höchstalter der gecachten Shop-Daten in Tagen.",
+)
+@_db_option
+@_json_option
+@click.pass_context
+def article(
+    ctx: click.Context,
+    material_number: str,
+    no_web: bool,
+    refresh: bool,
+    max_age: int,
+    db_path: Path | None,
+    json_flag: bool,
+) -> None:
+    """Alle Daten zu einem Artikel: DATANORM, aktueller Preis und Verfügbarkeit (SOAP), Shop-Daten.
+
+    Der Webshop wird nur für Daten gefragt, die DATANORM und SOAP nicht haben:
+    Bilder, Attribute, Zubehör/Varianten, Shop-Kategorie, eigene Artikelnummer.
+    Diese Shop-Daten werden in web.db neben der DATANORM-Datenbank gecacht.
+    """
+    with _lookup(ctx, db_path) as lookup:
+        try:
+            info = lookup.get_article(
+                material_number, use_web=not no_web, max_age=timedelta(days=max_age), refresh=refresh
+            )
+        except ArticleNotFoundError as exc:
+            click.echo(f"Error: {exc}", err=True)
+            sys.exit(1)
+    if json_flag:
+        _echo_json(
+            {
+                "material_number": info.material_number,
+                "sources": info.sources,
+                "description": info.description,
+                "ean": info.ean,
+                "manufacturer_item_number": info.manufacturer_item_number,
+                "datanorm": info.datanorm,
+                "price_availability": info.price_availability,
+                "web": info.web.to_dict() if info.web else None,
+                "web_from_cache": info.web_from_cache,
+                "warnings": info.warnings,
+            }
+        )
+        return
+    _echo_article_info(info)
+
+
+def _echo_article_info(info: ArticleInfo) -> None:
+    click.echo(f"{info.material_number}  {info.description or '-'}")
+    click.echo(f"  Quellen: {', '.join(info.sources)}")
+    click.echo(f"  EAN: {info.ean or '-'}  Hersteller-Bestellnr.: {info.manufacturer_item_number or '-'}")
+    dn = info.datanorm
+    if dn:
+        per = f"je {dn.price_unit} {dn.unit or ''}".rstrip()
+        click.echo(
+            f"  DATANORM ({dn.delivery_date}): Liste {_money(dn.list_price)}, Einkauf {_money(dn.net_price)} {per}"
+        )
+        click.echo(
+            f"  Warengruppe: {dn.main_group or '-'}/{dn.sub_group or '-'}  "
+            f"{dn.main_group_name or '-'} / {dn.sub_group_name or '-'}"
+        )
+    pa = info.price_availability
+    if pa:
+        click.echo(
+            f"  Aktuell (SOAP): {_money(pa.net_amount)} (Liste {_money(pa.list_amount)}), "
+            f"Verfügbarkeit {pa.availability_status or '-'}, Lager {pa.warehouse_name or '-'}"
+        )
+        for surcharge in pa.surcharges:
+            click.echo(f"    + {surcharge.text}: {_money(surcharge.amount)}")
+    web = info.web
+    if web:
+        origin = f"Cache vom {web.fetched_at:%Y-%m-%d %H:%M}" if info.web_from_cache else "live"
+        click.echo(f"  Shop ({origin}):")
+        click.echo(f"  Shop-Kategorie: {web.category_name or '-'} ({web.category_id or '-'})")
+        click.echo(f"  Hersteller: {web.supplier_name or '-'}  Meine Artikelnummer: {web.own_article_number or '-'}")
+        if web.cutting_fee is not None:
+            click.echo(f"  Schnittkosten: {_money(web.cutting_fee)}")
+        click.echo(
+            f"  Attribute: {len(web.attributes)}, Bilder: {len(web.images)}, Zubehör: {len(web.accessories)}, "
+            f"Varianten: {len(web.variants)}, Alternativen: {len(web.alternatives)}"
+        )
+    for warning in info.warnings:
+        click.echo(f"  Hinweis: {warning}")
+
+
+def _money(amount: Decimal | None) -> str:
+    if amount is None:
+        return "-"
+    return f"{amount:,.2f} €".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 # --- Web extension (fega_schmitt_client.web) ---
 #
 # Not an officially documented FEGA & Schmitt interface - see
@@ -229,9 +405,6 @@ def _echo_tiles(results: list[ArticleSearchResult]) -> None:
         return
     for r in results:
         click.echo(f"{r.material_number}  {r.description}")
-
-
-_json_option = click.option("--json", "-j", "json_flag", is_flag=True, help="JSON-Ausgabe.")
 
 
 @web_group.command("search")
@@ -320,6 +493,9 @@ def web_set_article_number(ctx: click.Context, material_number: str, value: str)
     """
     with _web_session(ctx) as client:
         client.set_article_number(material_number, value)
+    # The cached shop page still carries the old number.
+    with WebArticleCache() as cache:
+        cache.delete(material_number)
     click.echo(f"OK: {material_number} -> {value!r}")
 
 

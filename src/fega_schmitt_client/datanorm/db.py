@@ -75,6 +75,10 @@ CREATE TABLE surcharges (
     PRIMARY KEY (material_number, seq)
 );
 
+CREATE INDEX articles_ean ON articles (ean);
+CREATE INDEX articles_manufacturer_item_number ON articles (manufacturer_item_number COLLATE NOCASE);
+CREATE INDEX articles_manufacturer_type ON articles (manufacturer_type COLLATE NOCASE);
+
 CREATE VIEW article_prices AS
 SELECT
     a.material_number,

@@ -143,6 +143,23 @@ fega web set-article-number 104260 MEINE-NUMMER
 
 `fega web --help` zeigt alle Unterbefehle (Suche, Artikeldetails/-attribute/-bilder, Zubehör/Varianten/Alternativen, Kabellängen/Schnittkosten, Warenkorb, Bestellungen, Aktionsangebote, eigene Artikelnummer lesen/setzen).
 
+### Artikel suchen und nachschlagen
+
+`fega search` und `fega article` nutzen alle Quellen, die günstigste zuerst:
+
+1. die DATANORM-Datenbank (siehe unten), ganz ohne Request,
+2. die SOAP-Schnittstelle für tagesaktuellen Preis, Zuschläge und Verfügbarkeit,
+3. den Webshop nur für das, was die beiden nicht haben: Bilder, Attribute, Zubehör/Varianten, Shop-Kategorie, eigene Artikelnummer, Schnittkosten.
+
+```bash
+fega search "H07RN-F 5G16"       # DATANORM; Webshop nur ohne Treffer
+fega article 716736              # DATANORM + SOAP + Shop-Daten
+fega article 716736 --no-web     # ohne Webshop
+fega article 716736 --refresh    # Shop-Daten neu abrufen statt aus dem Cache
+```
+
+Die Shop-Daten eines Artikels landen in `~/.cache/fega-schmitt-client/web.db` neben der DATANORM-Datenbank und gelten 30 Tage (`--max-age`). `fega web set-article-number` entfernt den betroffenen Artikel aus diesem Cache. Ohne Zugangsdaten arbeiten beide Kommandos nur mit DATANORM. Fällt SOAP oder der Webshop aus, zeigt `fega article` die übrigen Daten mit einem Hinweis. `fega web ...` greift weiterhin direkt und ohne Cache auf den Webshop zu.
+
 ### DATANORM-Lieferungen in SQLite laden
 
 `fega datanorm import` lädt eine Lieferung (die `datanorm.zip` aus der FEGA-Mail oder ein Verzeichnis mit den entpackten Dateien) nach `~/.cache/fega-schmitt-client/datanorm.db` (anderer Ort per `--db` oder `FEGA_DATANORM_DB`):
