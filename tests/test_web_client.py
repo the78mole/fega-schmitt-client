@@ -24,6 +24,7 @@ from web_fixtures import (
 
 from fega_schmitt_client.web import WebClient
 from fega_schmitt_client.web.client import (
+    BROWSER_USER_AGENT,
     DEFAULT_BASE_URL,
     DEFAULT_LOGIN_PATH,
     DEFAULT_SECOND_CHOICE_DEAL_ID,
@@ -52,6 +53,33 @@ def test_search_logs_in_then_fetches_results():
     assert "memb_pass=geheim" in sent_body
     assert len(results) == 1
     assert results[0].material_number == "121350"
+
+
+@respx.mock
+def test_shop_requests_carry_browser_user_agent():
+    login_route = respx.post(LOGIN_URL).mock(return_value=httpx.Response(302, headers=LOGIN_SUCCESS_HEADERS))
+    shop_route = respx.get(SHOP_URL).mock(return_value=httpx.Response(200, text=SEARCH_RESULTS_HTML))
+
+    client = WebClient(customer_number="9920", shop_password="geheim")
+    client.search("121350")
+
+    assert BROWSER_USER_AGENT.startswith("Mozilla/5.0 ")
+    assert login_route.calls.last.request.headers["User-Agent"] == BROWSER_USER_AGENT
+    assert shop_route.calls.last.request.headers["User-Agent"] == BROWSER_USER_AGENT
+
+
+@respx.mock
+def test_injected_client_keeps_custom_user_agent_but_loses_httpx_default():
+    respx.post(LOGIN_URL).mock(return_value=httpx.Response(302, headers=LOGIN_SUCCESS_HEADERS))
+    shop_route = respx.get(SHOP_URL).mock(return_value=httpx.Response(200, text=SEARCH_RESULTS_HTML))
+
+    with httpx.Client(headers={"User-Agent": "my-tool/1.0"}) as custom:
+        WebClient(customer_number="9920", shop_password="geheim", http_client=custom).search("121350")
+    assert shop_route.calls.last.request.headers["User-Agent"] == "my-tool/1.0"
+
+    with httpx.Client() as plain:
+        WebClient(customer_number="9920", shop_password="geheim", http_client=plain).search("121350")
+    assert shop_route.calls.last.request.headers["User-Agent"] == BROWSER_USER_AGENT
 
 
 @respx.mock

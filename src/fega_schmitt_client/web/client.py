@@ -37,6 +37,14 @@ from .models import (
 
 DEFAULT_BASE_URL = "https://shop.fega.de"
 
+# Sent on every webshop request instead of httpx's default "python-httpx/x.y".
+# The shop is a browser-facing frontend, so we present ourselves as the browser
+# it was built for; the SOAP client (price_avail.py) is an API and deliberately
+# keeps the httpx default.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+)
+
 # The "/abtest/" segment is an A/B test FEGA & Schmitt appears to be running
 # on the shop frontend - observed stable across multiple days and sessions
 # (docs/extensions.md, section 2.2), but not documented or guaranteed to
@@ -88,8 +96,16 @@ class WebClient:
         self._base_url = base_url.rstrip("/")
         self._shop_path = shop_path
         self._login_path = login_path
-        self._client = http_client or httpx.Client(timeout=timeout, follow_redirects=False)
+        self._client = http_client or httpx.Client(
+            timeout=timeout,
+            follow_redirects=False,
+            headers={"User-Agent": BROWSER_USER_AGENT},
+        )
         self._owns_client = http_client is None
+        # An injected client keeps a User-Agent its owner chose; only httpx's
+        # own default is replaced so the shop never sees "python-httpx/...".
+        if self._client.headers.get("User-Agent", "").startswith("python-httpx/"):
+            self._client.headers["User-Agent"] = BROWSER_USER_AGENT
         self._logged_in = False
 
     def close(self) -> None:

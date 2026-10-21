@@ -424,6 +424,7 @@ sequenceDiagram
 ```
 
 - `httpx.Client(cookies=...)` für die Session, ein Login bei Bedarf, danach Wiederverwendung des Clients über mehrere Aufrufe hinweg — kein Cookie-Datei-Roundtrip (siehe Abschnitt 4).
+- **User-Agent (21.10.2026):** Der `WebClient` sendet auf allen Shop-Requests einen Browser-User-Agent (Chrome 134 unter Linux, Konstante `BROWSER_USER_AGENT` in `web/client.py`) statt des `python-httpx/x.y`-Standards — der Shop ist ein Browser-Frontend, kein API-Endpunkt. Ein per `http_client=` übergebener Client behält einen selbst gesetzten User-Agent, nur der httpx-Default wird ersetzt. Der SOAP-Client (`price_avail.py`) ist davon bewusst ausgenommen und sendet weiterhin den httpx-Default: Dort geht es gegen eine dokumentierte API, kein Grund, sich als Browser auszugeben.
 - Parsing: gezielte Regex/Attribut-Extraktion (`data-id`/`data-compare`, `data-variables`, `Warengruppe`-Anker, `<img class="width-100">`) statt eines vollständigen HTML-Parse-Baums — im 72-Artikel-Lauf mit reinem Regex ohne HTML-Parser-Bibliothek zu 100 % zuverlässig. Ein schlanker Parser (z. B. `selectolax`) ist optional für mehr Robustheit gegenüber Markup-Variationen, aber laut Praxiseinsatz keine Voraussetzung — kann als `[project.optional-dependencies] web = []` (leer, nur `httpx` als bereits vorhandene Kern-Dependency) starten und bei Bedarf ergänzt werden.
 - Fremdinhalte in der Trefferliste (`fsSucheWerbung`-Kacheln, siehe 2.3) explizit herausfiltern, nicht nur "erstes Element nehmen".
 
