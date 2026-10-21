@@ -13,10 +13,14 @@ import sys
 from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 import click
 
 from . import FegaSchmittClient, PriceAvailRequestItem, PriceAvailResultItem
+from .datanorm import S3Config, default_object_key, upload_file
+from .datanorm.s3 import DEFAULT_PREFIX
+from .datanorm.s3 import make_client as make_s3_client
 from .price_avail import DEFAULT_ENDPOINT
 from .web import ArticleSearchResult, WebClient
 from .web.client import DEFAULT_SECOND_CHOICE_DEAL_ID
@@ -537,6 +541,87 @@ def web_order(ctx: click.Context, order_number: str, json_flag: bool) -> None:
             f"  [{item.position}] {item.material_number}  {item.description or '-'}  "
             f"bestellt={item.quantity_ordered}  geliefert={item.quantity_delivered}"
         )
+
+
+# --- DATANORM (fega_schmitt_client.datanorm) ---
+#
+# Archives the files FEGA sends by mail. The S3 settings are separate from
+# the shop credentials, all of them can come from the FEGA_S3_* variables.
+
+
+@main.group("datanorm")
+def datanorm_group() -> None:
+    """DATANORM-Lieferungen (datanorm.zip, datanorm.001, datanorm.wrg, datpreis.001)."""
+
+
+@datanorm_group.command("upload")
+@click.argument("files", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--endpoint-url", envvar="FEGA_S3_ENDPOINT_URL", help="S3-Endpoint. Auch als FEGA_S3_ENDPOINT_URL.")
+@click.option("--region", envvar="FEGA_S3_REGION", default="garage", show_default=True, help="Auch als FEGA_S3_REGION.")
+@click.option("--bucket", envvar="FEGA_S3_BUCKET", help="Ziel-Bucket. Auch als FEGA_S3_BUCKET.")
+@click.option("--access-key-id", envvar="FEGA_S3_ACCESS_KEY_ID", help="Auch als FEGA_S3_ACCESS_KEY_ID.")
+@click.option("--secret-access-key", envvar="FEGA_S3_SECRET_ACCESS_KEY", help="Auch als FEGA_S3_SECRET_ACCESS_KEY.")
+@click.option("--prefix", default=DEFAULT_PREFIX, show_default=True, help="Präfix für den Objekt-Key.")
+@click.option(
+    "--date",
+    "delivery_date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="Lieferdatum im Key (YYYY-MM-DD). Default: Änderungsdatum der Datei.",
+)
+@click.option("--key", help="Kompletter Objekt-Key statt <präfix>/<datum>/<dateiname>; nur mit genau einer Datei.")
+def datanorm_upload(
+    files: tuple[Path, ...],
+    endpoint_url: str | None,
+    region: str,
+    bucket: str | None,
+    access_key_id: str | None,
+    secret_access_key: str | None,
+    prefix: str,
+    delivery_date: datetime | None,
+    key: str | None,
+) -> None:
+    """DATANORM-Dateien in einen S3-Bucket hochladen.
+
+    Ohne --key landet jede Datei unter <präfix>/<YYYY-MM-DD>/<dateiname>.
+
+    \b
+    Beispiele:
+        fega datanorm upload datanorm.zip
+        fega datanorm upload extracted/* --date 2026-10-21
+    """
+    missing = [
+        name
+        for name, value in (
+            ("--endpoint-url", endpoint_url),
+            ("--bucket", bucket),
+            ("--access-key-id", access_key_id),
+            ("--secret-access-key", secret_access_key),
+        )
+        if not value
+    ]
+    if missing:
+        click.echo(f"Error: {', '.join(missing)} (oder FEGA_S3_*) sind erforderlich.", err=True)
+        sys.exit(2)
+    if key and len(files) > 1:
+        click.echo("Error: --key geht nur mit genau einer Datei.", err=True)
+        sys.exit(2)
+
+    config = S3Config(
+        endpoint_url=endpoint_url,
+        bucket=bucket,
+        access_key_id=access_key_id,
+        secret_access_key=secret_access_key,
+        region=region,
+    )
+    try:
+        client = make_s3_client(config)
+        for path in files:
+            object_key = key or default_object_key(path, prefix, delivery_date.date() if delivery_date else None)
+            uri = upload_file(path, object_key, config, client=client)
+            click.echo(f"OK: {path} -> {uri}")
+    except Exception as exc:  # noqa: BLE001 - CLI error boundary, converts any failure to a clean message
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

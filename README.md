@@ -143,6 +143,17 @@ fega web set-article-number 104260 MEINE-NUMMER
 
 `fega web --help` zeigt alle Unterbefehle (Suche, Artikeldetails/-attribute/-bilder, Zubehör/Varianten/Alternativen, Kabellängen/Schnittkosten, Warenkorb, Bestellungen, Aktionsangebote, eigene Artikelnummer lesen/setzen).
 
+### DATANORM-Lieferungen archivieren
+
+`fega datanorm upload` lädt die per Mail gelieferten DATANORM-Dateien in einen S3-kompatiblen Store (z. B. Garage). Braucht das optionale Extra `s3` (boto3): `uv tool install 'fega-schmitt-client[s3]'`. Die S3-Zugangsdaten sind unabhängig von den Shop-Zugangsdaten und kommen aus `FEGA_S3_ENDPOINT_URL`, `FEGA_S3_REGION`, `FEGA_S3_BUCKET`, `FEGA_S3_ACCESS_KEY_ID` und `FEGA_S3_SECRET_ACCESS_KEY` (oder den gleichnamigen Optionen):
+
+```bash
+uv run --env-file .env fega datanorm upload datanorm.zip
+uv run --env-file .env fega datanorm upload datanorm.001 datanorm.wrg datpreis.001 --date 2026-10-21
+```
+
+Jede Datei landet unter `<präfix>/<YYYY-MM-DD>/<dateiname>` (Präfix per `--prefix`, Default `datanorm`). Ohne `--date` gilt das Änderungsdatum der Datei. `unzip` übernimmt die Zeitstempel aus dem Archiv, entpackte Dateien tragen also das Lieferdatum. `--key` setzt den Objekt-Key für eine einzelne Datei komplett selbst.
+
 ## Installation
 
 ```bash
