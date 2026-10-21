@@ -101,6 +101,8 @@ with WebClient(customer_number="9920", shop_password="...") as web:
 
 Dieselben Zugangsdaten wie `FegaSchmittClient`. Der Kategoriebaum ([docs/fega_categories.md](docs/fega_categories.md)) liegt als JSON-Baseline im Package (`fega_schmitt_client/web/data/categories.json`) und wird zur ID-Normalisierung genutzt. `WebClient` hält anders als `FegaSchmittClient` eine langlebige Session über die gesamte Objektlebensdauer (`with`-Block bzw. `close()` verwenden).
 
+**Zugriffsbremse und Session-Cache:** `WebClient` schickt höchstens einen Request alle 3 Sekunden an den Shop (`min_request_interval=`, `0` schaltet die Bremse ab). Die Session-Cookies und der Zeitpunkt des letzten Requests liegen pro Kundennummer in `~/.cache/fega-schmitt-client/` (bzw. unter `$XDG_CACHE_HOME`, abweichend per `session_dir=`). Dadurch warten auch getrennte Prozesse aufeinander, und solange die Session lebt, entfällt der Login. Die Datei hat die Rechte 0600 und enthält kein Passwort, ist aber für die Lebensdauer der Session so viel wert wie ein Login. `persist_session=False` hält beides nur im Speicher des Objekts. In der CLI entsprechen dem `fega web --request-interval <s>` (`FEGA_WEB_REQUEST_INTERVAL`) und `fega web --no-session-cache` (`FEGA_WEB_NO_SESSION_CACHE=1`); beide Optionen stehen vor dem Subcommand.
+
 ## CLI
 
 Als Kommandozeilen-Tool `fega` installierbar, ohne dass ein eigenes venv angelegt werden muss:

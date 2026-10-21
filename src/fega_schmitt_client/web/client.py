@@ -9,8 +9,10 @@ relying on this in production.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING
 
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
 from ..exceptions import FegaTransportError
 from . import _parse
 from .exceptions import FegaLoginError, FegaScrapingError
+from .session import DEFAULT_MIN_REQUEST_INTERVAL, SessionStore, default_session_dir
 from .models import (
     Article,
     ArticleDetail,
@@ -78,6 +81,14 @@ class WebClient:
     different paths at once (extensions.md 2.2), and a cookie-file/process
     roundtrip has been observed to silently drop it (extensions.md,
     section 4) - close() / the context manager exist because of that.
+
+    Throttle and session reuse (see web/session.py): at most one request per
+    ``min_request_interval`` seconds (default 3) reaches the shop. With
+    ``persist_session=True`` (the default) the cookies and the time of the
+    last request live in a 0600 file per customer number under ``session_dir``
+    (default ``$XDG_CACHE_HOME/fega-schmitt-client``), so separate processes
+    queue behind each other and skip the login while the session is alive.
+    ``persist_session=False`` keeps both in memory for this object only.
     """
 
     def __init__(
@@ -90,6 +101,9 @@ class WebClient:
         login_path: str = DEFAULT_LOGIN_PATH,
         timeout: float = 30.0,
         http_client: httpx.Client | None = None,
+        min_request_interval: float = DEFAULT_MIN_REQUEST_INTERVAL,
+        persist_session: bool = True,
+        session_dir: str | os.PathLike[str] | None = None,
     ) -> None:
         self._customer_number = customer_number
         self._shop_password = shop_password
@@ -106,7 +120,14 @@ class WebClient:
         # own default is replaced so the shop never sees "python-httpx/...".
         if self._client.headers.get("User-Agent", "").startswith("python-httpx/"):
             self._client.headers["User-Agent"] = BROWSER_USER_AGENT
-        self._logged_in = False
+        self._session = SessionStore.for_customer(
+            customer_number,
+            (Path(session_dir) if session_dir is not None else default_session_dir()) if persist_session else None,
+            min_interval=min_request_interval,
+        )
+        # Restored cookies are trusted optimistically: if the session has died
+        # meanwhile, _request() sees the shop's login redirect and logs in again.
+        self._logged_in = self._session.load_cookies(self._client.cookies.jar)
 
     def close(self) -> None:
         if self._owns_client:
@@ -345,7 +366,8 @@ class WebClient:
         if self._logged_in:
             return
         url = f"{self._base_url}{self._login_path}"
-        response = self._client.post(
+        response = self._send(
+            "POST",
             url,
             params={"cmd": "MemberLogin"},
             data={
@@ -397,9 +419,14 @@ class WebClient:
         return response
 
     def _send(self, method: str, url: str, **kwargs: object) -> httpx.Response:
+        # The single choke point for every shop request, login included: wait
+        # for the throttle, then persist whatever cookies the response set.
+        self._session.wait_turn()
         try:
-            return self._client.request(method, url, **kwargs)
+            response = self._client.request(method, url, **kwargs)
         except httpx.TimeoutException as exc:
             raise FegaTransportError(f"Zeitüberschreitung bei Anfrage an {url}") from exc
         except httpx.HTTPError as exc:
             raise FegaTransportError(f"HTTP-Anfrage an {url} fehlgeschlagen: {exc}") from exc
+        self._session.save_cookies(self._client.cookies.jar)
+        return response
