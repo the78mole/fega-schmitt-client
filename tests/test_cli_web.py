@@ -134,3 +134,43 @@ def test_web_reports_transport_error():
 
     assert result.exit_code == 1
     assert "Error" in result.output
+
+
+_LOGIN_WITH_SESSION_COOKIE = [("Location", LOGIN_SUCCESS_HEADERS["Location"]), ("Set-Cookie", "sfs=abc; path=/")]
+
+
+@respx.mock
+def test_consecutive_cli_calls_share_session_and_throttle(isolated_session_cache, recorded_sleeps):
+    login = respx.post(LOGIN_URL).mock(return_value=httpx.Response(302, headers=_LOGIN_WITH_SESSION_COOKIE))
+    respx.get(SHOP_URL).mock(return_value=httpx.Response(200, text=SEARCH_RESULTS_HTML))
+    runner = CliRunner()
+
+    first = runner.invoke(main, [*CREDENTIALS, "web", "search", "121350"])
+    second = runner.invoke(main, [*CREDENTIALS, "web", "search", "121350"])
+
+    assert first.exit_code == 0, first.output
+    assert second.exit_code == 0, second.output
+    assert login.call_count == 1
+    assert (isolated_session_cache / "web-session-9920.json").exists()
+    # Login->search in the first call, then the second call's search; each waits (sleep is recorded, not real).
+    assert len(recorded_sleeps) == 2
+
+
+@respx.mock
+def test_cli_options_disable_session_cache_and_throttle(isolated_session_cache, recorded_sleeps):
+    login = respx.post(LOGIN_URL).mock(return_value=httpx.Response(302, headers=_LOGIN_WITH_SESSION_COOKIE))
+    respx.get(SHOP_URL).mock(return_value=httpx.Response(200, text=SEARCH_RESULTS_HTML))
+    runner = CliRunner()
+    args = [*CREDENTIALS, "web", "--request-interval", "0", "--no-session-cache", "search", "121350"]
+
+    assert runner.invoke(main, args).exit_code == 0
+    assert runner.invoke(main, args).exit_code == 0
+
+    assert login.call_count == 2
+    assert not isolated_session_cache.exists()
+    assert recorded_sleeps == []
+
+
+def test_cli_rejects_negative_request_interval():
+    result = CliRunner().invoke(main, [*CREDENTIALS, "web", "--request-interval", "-1", "search", "x"])
+    assert result.exit_code == 2

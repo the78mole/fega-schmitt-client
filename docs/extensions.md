@@ -263,6 +263,45 @@ Mehrere Lagerstandorte (`Bestand Zentrallager`, `Bestand FEGA & Schmitt Erlangen
 
 **`get_cutting_fee(material_number)` / `Article.cutting_fee`** — der Hinweistext "Eventuell fallen Schnittkosten in Höhe von X an." sitzt auf der normalen Artikeldetailseite (nicht im `AjaxKLaeng`-Overlay), direkt neben dem Preis. Nur bei Kabelartikeln vorhanden (bei den bereits früher getesteten Nicht-Kabel-Artikeln 051430/253439 fehlt der Text komplett, ergibt `None`), daher als Feld auf `Article` mit über `parse_article()` befüllt statt als eigener Zwei-Request-Abruf.
 
+### 2.11 Schreibzugriff: Objekte/Kommissionen und Warenkorb-Positionen — per Netzwerk-Mitschnitt bestätigt (19.10.2026)
+
+Live im eingeloggten Browser beobachtet (Session mit `bold=4` = Cookie `cbold=4`), alle Aufrufe gegen `/abtest/scripts/shop.php`. Jede Schreibaktion wurde anschließend über `get_cart()` bzw. die Objektliste gegengeprüft. Anlass war das Anlegen eines Projekt-Warenkorbs mit 21 Positionen; konkrete Kundendaten sind unten durch Platzhalter ersetzt.
+
+**Objekte/Kommissionen** (B2B-Projektreferenz; im UI „Objekt/Kommission“, erscheint je Warenkorbposition und auf den Belegen):
+
+- Liste: `GET cmd=Objekt&mode=selAll` (Filter Aktuelle/Abgelaufene/„Nur mit Konditionen“). Tabelle: Nr., Meine Nr., Bezeichnung, Firma, Straße/Telefon, PLZ/Ort, Ansprechpartner, Aktiv bis.
+- Formular: `GET cmd=Objekt&mode=new` liefert das Modal-HTML (~6,7 kB) mit `<form method="post" action="…cmd=Objekt&mode=insert">`. Felder: `objnr` (hidden, leer bei Neuanlage), `weiter_zuord` (hidden), `projnr` (text, max 30, „Meine Nummer“), `bez` (text, **Pflicht**, max 30, Bezeichnung), `gbis` (text `TT.MM.JJJJ`, Default heute + 6 Monate), Lieferadresse optional (sonst Firmenanschrift): `firma` (35), `zusatz` (35), `tel` (tel, 20), `plz` (number, 10), `ort` (30), `str` (35).
+- Prüfung, ob „Meine Nummer“ schon vergeben ist: `GET cmd=AjaxKobjnrExists/0&kobjnr=<projnr>` (feuert das Formular beim Verlassen des Felds).
+- Anlegen: `POST cmd=Objekt&mode=insert` als klassischer Form-POST (`application/x-www-form-urlencoded`), Antwort ist ein Redirect auf `cmd=Objekt`; die neue Nr. ist eine laufende Nummer (hier 3). **Fallstricke:** `bez` wird hart auf 30 Zeichen abgeschnitten; ein erster Versuch mit `projnr=2026-09_ER-Vorndran` schlug **stillschweigend** fehl (HTTP 200, kein Eintrag in der Liste), der zweite mit `projnr=Vorndran` klappte — ob Unterstrich oder Länge die Ursache war, ist offen. Erfolg also immer über `mode=selAll` verifizieren.
+- Löschen: `GET cmd=Objekt&mode=del&spage=1&sortname=-3&objnr=<Nr>` (Link am Papierkorb; nicht ausgeführt).
+- Aktives Objekt der Sitzung bzw. des aktiven Warenkorbs setzen: `GET cmd=AjaxChangeCom&obj=<Nr>&objname=<Anzeigetext>` (`objname` ist nur der Text des Dropdown-Eintrags, inkl. führender Leerzeichen; `obj=0` = „Keine Objektbestellung“, nicht getestet). Danach tragen **neu hinzugefügte** Positionen dieses Objekt (Warenkorbseite zeigt je Position `[<Nr>] <Meine Nr.> <Bezeichnung>` mit Dropdown „Keine Kommission“ / vorhandene Objekte / „Neue Kommission anlegen“). Der Endpunkt zum Umstellen einer einzelnen Position wurde nicht mitgeschnitten.
+
+**Warenkorb anlegen und wechseln:**
+
+- Anlegen: `POST cmd=BasketView/&mode=newWK` mit `new_wk_name` (text, **max 25**) und `pwahlid` (hidden, leer). Der neue Warenkorb ist sofort aktiv; seine `wk_id` steht danach in `get_cart_list()` und im Header-Dropdown.
+- Wechseln: `GET cmd=BasketView/<wk_id>`. **Seiteneffekt:** Das ist exakt der Aufruf hinter `get_cart(cart_id)` — er macht den Warenkorb gleichzeitig zum **aktiven** Warenkorb der Sitzung (Header-Anzeige und alle folgenden `AjaxBasketAddNew` beziehen sich darauf). `get_cart(id)` ist also nicht nebenwirkungsfrei; wer nur lesen will, muss anschließend den vorherigen Warenkorb wieder aufrufen.
+- Header-Zusammenfassung des aktiven Warenkorbs: `GET cmd=AjaxWkRechts&wk_id=-2` → JSON `{"current_basket": "<html>", …}` (`-2` = aktueller Warenkorb).
+
+**Position hinzufügen** — `POST cmd=AjaxBasketAddNew`, Body `multipart/form-data` (FormData), Antwort JSON `{"html": "<Overlay-HTML>"}` mit „Artikel <Nr> erfolgreich zum Warenkorb hinzugefügt“ und „Der Artikel wurde mit <n> Stück|Meter in den Warenkorb gelegt“. Vom Shop selbst gesendete Felder (Klick auf „In den Warenkorb“ im Cross-Sell-Overlay):
+
+```
+_x=1
+mode=
+barcode=
+entries[0][info]={"arnr":"791766","typ":"CSWKJ 1_3_266350","recnum":"","ainr":"","ptxt":"","objnr":"","appreis":"17.0400","kzsl":"","arbe":"","rdvpe":null,"pro_fe_vpe":"1","kommavk":"","additional":[]}
+entries[0][anz]=1
+```
+
+Minimal genügt `arnr` plus die leeren Felder (`typ`, `recnum`, `ainr`, `ptxt`, `objnr`, `appreis`, `kzsl`, `arbe` leer, `rdvpe` null, `pro_fe_vpe` "1", `kommavk` leer, `additional` []) und `anz` — 18 Artikel so angelegt, alle korrekt im Warenkorb. `typ` ist nur Herkunfts-Tracking (`CSWKJ …` = Cross-Sell-Overlay), `appreis` der angezeigte Preis (informativ). Drei Beobachtungen:
+
+1. **Nur `entries[0]` wird verarbeitet.** Ein Request mit 19 Einträgen (`entries[0..18]`) legte nur den ersten an → je Artikel ein eigener Request.
+2. **Mengen werden serverseitig auf die VPE gerundet** (3 → 10 bei VPE 10, 1 → 10 bei PTFIX-Blöcken); der Antworttext nennt die tatsächlich eingetragene Menge.
+3. **Schnittlängen-Artikel** (Bezeichnung „… Schnitt“/„Schnittlänge“, Einheit MTR) erzeugen automatisch eine zweite, verknüpfte Position „Schnittkosten“ (Art. `152798`, 25,00 € je Schnitt). Bei fünf Aderleitungsfarben à 5 m waren das 125 € Gebühren — vor dem Hinzufügen `get_cutting_fee()` prüfen.
+
+**Position löschen** — `GET cmd=BasketAdd/<position_id>[_<position_id2>]&mode=UpdDel`, Antwort Redirect auf `BasketView`. `position_id` ist die von `get_cart()` gelieferte (`pwahl_id`); bei Schnittlängen hängt das UI die Schnittkosten-Position mit `_` an und beide verschwinden zusammen. Das UI fragt vorher per `GET cmd=AjaxMsg&art=confirm` nach; direkt aufgerufen löscht der Endpunkt ohne Rückfrage.
+
+**Nicht mitgeschnitten / offen:** Menge ändern, Kommentar je Position, Objekt je Position ändern, Warenkorb umbenennen (`mode=changeName`, 2.7) und löschen (`cmd=DeleteBaskets`), „Angebot anfragen“, „Zur Bestellung“. Für die Schreib-Endpunkte war im Browser `bold=4` = `cbold` gesetzt; ob `bold=` leer auch hier reicht, bleibt wie in 2.7 offen.
+
 ## 3. Herkunft der Praxis-Erkenntnisse (Abschnitte 2.3–2.6)
 
 Ein Teil der obigen Erkenntnisse (Warengruppen-Extraktion, einfache Bild-Extraktion, bestätigte EAN-/Herstellerteilenummer-Suche, Cookie-Fallstrick unten) stammt nicht aus der Erstrecherche, sondern aus einem **echten Produktiveinsatz**: ein downstream Warenwirtschafts-Abgleich (Kategorisierung eines bestehenden Teilebestands, 72 reale Artikel, verifiziert per Bash/curl-Skript mit eingebetteter Python-Regex-Extraktion, 0 Fehlschläge nach Fix des `Warengruppe`-Regex-Ankers). Das ist der wichtigste Beleg dafür, dass Kategorie- und Bild-Extraktion nicht nur theoretisch möglich sind, sondern einen validierten realen Bedarf abdecken — anders als Hersteller-/EAN-Suche, die bisher nur in dieser Recherche getestet wurde, ohne bekannten konkreten Abnehmer.
@@ -360,6 +399,8 @@ class ArticleImage:
 
 `search()` liefert `list[ArticleSearchResult]` ohne EAN/Herstellerteilenummer/Kategorie (die Trefferliste enthält sie nicht). Wer diese Felder braucht, ruft zusätzlich `get_article_detail(material_number)` auf.
 
+Umgekehrt gilt: Die Artikelbezeichnung steht **nur** in der Trefferkachel (`data-compare[1]`), nicht in den Detailseiten-Feldern. `get_article()` durchsucht ohnehin zuerst (um an die Detail-URL zu kommen) und reicht die Bezeichnung der Kachel als `Article.description` durch, statt sie wegzuwerfen — sonst bräuchte jeder Aufrufer, der Nummer *und* Namen will, einen zweiten `search()`-Aufruf. `parse_article()` allein (ohne Suchschritt) lässt das Feld auf `None`.
+
 ## 9. Implementierung
 
 ```mermaid
@@ -383,6 +424,8 @@ sequenceDiagram
 ```
 
 - `httpx.Client(cookies=...)` für die Session, ein Login bei Bedarf, danach Wiederverwendung des Clients über mehrere Aufrufe hinweg — kein Cookie-Datei-Roundtrip (siehe Abschnitt 4).
+- **User-Agent (21.10.2026):** Der `WebClient` sendet auf allen Shop-Requests einen Browser-User-Agent (Chrome 134 unter Linux, Konstante `BROWSER_USER_AGENT` in `web/client.py`) statt des `python-httpx/x.y`-Standards — der Shop ist ein Browser-Frontend, kein API-Endpunkt. Ein per `http_client=` übergebener Client behält einen selbst gesetzten User-Agent, nur der httpx-Default wird ersetzt. Der SOAP-Client (`price_avail.py`) ist davon bewusst ausgenommen und sendet weiterhin den httpx-Default: Dort geht es gegen eine dokumentierte API, kein Grund, sich als Browser auszugeben.
+- **Zugriffsbremse und Session-Cache (21.10.2026):** Alle Shop-Requests einschließlich Login laufen durch `WebClient._send()` und warten dort auf einen Mindestabstand (Default 3 s). Cookies und Zeitpunkt des letzten Requests liegen als JSON pro Kundennummer unter `$XDG_CACHE_HOME/fega-schmitt-client/` (0600, Verzeichnis 0700, `flock` gegen gleichzeitige Prozesse), siehe `web/session.py`. Die Cookies werden bewusst als einzelne Einträge (Name, Wert, Domain, Pfad, Ablauf) gespeichert, nicht als Cookie-Datei — wegen des Verlusts der mehrfachen `sfs`-Cookies in Abschnitt 4. Live am 21.10.2026 bestätigt: Eine so gespeicherte Session wurde in einem neuen Prozess ohne erneuten Login akzeptiert, alle fünf `sfs`-Pfade kamen an. Ist die Session serverseitig abgelaufen, greift das bestehende Neu-Anmelden über den `warnings=`-Redirect.
 - Parsing: gezielte Regex/Attribut-Extraktion (`data-id`/`data-compare`, `data-variables`, `Warengruppe`-Anker, `<img class="width-100">`) statt eines vollständigen HTML-Parse-Baums — im 72-Artikel-Lauf mit reinem Regex ohne HTML-Parser-Bibliothek zu 100 % zuverlässig. Ein schlanker Parser (z. B. `selectolax`) ist optional für mehr Robustheit gegenüber Markup-Variationen, aber laut Praxiseinsatz keine Voraussetzung — kann als `[project.optional-dependencies] web = []` (leer, nur `httpx` als bereits vorhandene Kern-Dependency) starten und bei Bedarf ergänzt werden.
 - Fremdinhalte in der Trefferliste (`fsSucheWerbung`-Kacheln, siehe 2.3) explizit herausfiltern, nicht nur "erstes Element nehmen".
 

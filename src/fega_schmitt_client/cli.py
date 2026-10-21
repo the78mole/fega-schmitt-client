@@ -20,6 +20,7 @@ from . import FegaSchmittClient, PriceAvailRequestItem, PriceAvailResultItem
 from .price_avail import DEFAULT_ENDPOINT
 from .web import ArticleSearchResult, WebClient
 from .web.client import DEFAULT_SECOND_CHOICE_DEAL_ID
+from .web.session import DEFAULT_MIN_REQUEST_INTERVAL
 
 
 @click.group()
@@ -152,8 +153,27 @@ def _result_to_json(result: PriceAvailResultItem) -> dict:
 
 
 @main.group("web")
-def web_group() -> None:
+@click.option(
+    "--request-interval",
+    envvar="FEGA_WEB_REQUEST_INTERVAL",
+    type=click.FloatRange(min=0),
+    default=DEFAULT_MIN_REQUEST_INTERVAL,
+    show_default=True,
+    help="Mindestabstand in Sekunden zwischen zwei Shop-Requests, auch über mehrere fega-Aufrufe hinweg. "
+    "Auch als FEGA_WEB_REQUEST_INTERVAL.",
+)
+@click.option(
+    "--no-session-cache",
+    is_flag=True,
+    envvar="FEGA_WEB_NO_SESSION_CACHE",
+    help="Shop-Session nicht unter ~/.cache/fega-schmitt-client speichern; jeder Aufruf meldet sich neu an "
+    "und die Bremse gilt nur innerhalb dieses Aufrufs. Auch als FEGA_WEB_NO_SESSION_CACHE=1.",
+)
+@click.pass_context
+def web_group(ctx: click.Context, request_interval: float, no_session_cache: bool) -> None:
     """Webshop-Zugriff (shop.fega.de) - Suche, Artikeldetails, Warenkorb, Bestellungen, ..."""
+    ctx.obj["web_request_interval"] = request_interval
+    ctx.obj["web_persist_session"] = not no_session_cache
 
 
 @contextlib.contextmanager
@@ -168,7 +188,12 @@ def _web_session(ctx: click.Context):
         )
         sys.exit(2)
     try:
-        with WebClient(customer_number=customer_number, shop_password=shop_password) as client:
+        with WebClient(
+            customer_number=customer_number,
+            shop_password=shop_password,
+            min_request_interval=ctx.obj.get("web_request_interval", DEFAULT_MIN_REQUEST_INTERVAL),
+            persist_session=ctx.obj.get("web_persist_session", True),
+        ) as client:
             yield client
     except Exception as exc:  # noqa: BLE001 - CLI error boundary, converts any failure to a clean message
         click.echo(f"Error: {exc}", err=True)
@@ -228,6 +253,7 @@ def web_article(ctx: click.Context, material_number: str, json_flag: bool) -> No
         click.echo(json.dumps(article.to_dict(), indent=2, ensure_ascii=False))
         return
     click.echo(f"{article.material_number}  EAN={article.ean or '-'}")
+    click.echo(f"  Bezeichnung: {article.description or '-'}")
     click.echo(f"  Hersteller: {article.supplier_name or '-'} ({article.manufacturer_item_number or '-'})")
     click.echo(f"  Kategorie: {article.category_name or '-'} ({article.category_id or '-'})")
     click.echo(f"  Meine Artikelnummer: {article.own_article_number or '-'}")

@@ -57,6 +57,22 @@ Nebenbefund, jetzt gegenstandslos: Der `cmd=AjaxVarianten&mode=getVariants`-Endp
 
 **Vollständige Varianten-Matrix statt kleiner Teaser-Liste (11.08.2026):** Auf Hinweis des Nutzers (ein Artikel mit einer auffällig großen, klickbaren Variantenauswahl in der Shop-UI) untersucht — mit Playwright im headed-Modus (Headless wurde vom Server mit "The URL you requested has been blocked" abgewiesen, `httpx` war davon nicht betroffen). Fund: Der bereits genutzte `data-variables`-JSON-Blob auf der Artikeldetailseite (Korrektur nebenbei: sitzt auf `<body>`, nicht auf einem eigenen `<div>`, siehe extensions.md 2.4) trägt zusätzlich ein `"variants"`-Array mit der kompletten Attributkombinatorik — 512 Artikelnummern bei einem Testartikel (Leitungsschutzschalter) statt 3 aus der alten Teaser-Liste. Kein Playwright/AJAX für die Daten selbst nötig, alles bereits im `httpx`-Response enthalten. `get_article_variants()` liest jetzt daraus, mit Fallback auf die alte Extraktion. EF/EV-Attributcodes werden bewusst noch nicht in lesbare Namen aufgelöst (Zusatzaufwand, siehe extensions.md 2.9) — auf Nutzerwunsch zunächst nur die flache Artikelnummernliste.
 
+
+### Geplant (19.10.2026): Schreibzugriff Warenkorb und Objekte/Kommissionen
+
+Endpunkte per Browser-Netzwerkmitschnitt kartiert und live angewendet (siehe [docs/extensions.md](docs/extensions.md), Abschnitt 2.11) — noch nicht in der Library umgesetzt.
+
+| Methode (Vorschlag) | Endpunkt | S | I | T | L |
+| --- | --- | :-: | :-: | :-: | :-: |
+| `get_object_list()` | `GET cmd=Objekt&mode=selAll` | ✅ | ⬜ | ⬜ | ✅ |
+| `create_object(projnr, bez, gbis=None, address=None)` | `POST cmd=Objekt&mode=insert` (Form-POST, Felder `projnr`/`bez`/`gbis`/`firma`/`zusatz`/`tel`/`plz`/`ort`/`str`); Erfolg über die Liste verifizieren, `bez` max 30 Zeichen | ✅ | ⬜ | ⬜ | ✅ |
+| `set_active_object(objnr)` | `GET cmd=AjaxChangeCom&obj=<Nr>&objname=<Text>` | ✅ | ⬜ | ⬜ | ✅ |
+| `create_cart(name)` | `POST cmd=BasketView/&mode=newWK`, `new_wk_name` max 25 Zeichen; wird sofort aktiv | ✅ | ⬜ | ⬜ | ✅ |
+| `set_active_cart(cart_id)` | `GET cmd=BasketView/<id>` — identisch mit `get_cart(id)`, das damit einen **Seiteneffekt** hat | ✅ | ⬜ | ⬜ | ✅ |
+| `add_cart_item(material_number, quantity)` | `POST cmd=AjaxBasketAddNew` (FormData, `entries[0][info]` als JSON, `entries[0][anz]`); nur ein Eintrag je Request, VPE-Rundung, Schnittkosten-Position bei Schnittware | ✅ | ⬜ | ⬜ | ✅ |
+| `delete_cart_item(position_id, linked_position_id=None)` | `GET cmd=BasketAdd/<id>[_<id2>]&mode=UpdDel` | ✅ | ⬜ | ⬜ | ✅ |
+| Menge/Kommentar/Objekt je Position ändern, Warenkorb umbenennen/löschen, Bestellung auslösen | nicht mitgeschnitten | ⬜ | ⬜ | ⬜ | ⬜ |
+
 ## 2. DATANORM v5 Submodul
 
 Wartet auf Zugangsdaten + Format-Spezifikation von FEGA & Schmitt (beantragt, siehe [docs/architecture.md](docs/architecture.md#73-datanorm-v5-artikel-stammdatenpreislisten)).

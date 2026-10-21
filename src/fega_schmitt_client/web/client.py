@@ -9,8 +9,10 @@ relying on this in production.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING
 
@@ -22,6 +24,7 @@ if TYPE_CHECKING:
 from ..exceptions import FegaTransportError
 from . import _parse
 from .exceptions import FegaLoginError, FegaScrapingError
+from .session import DEFAULT_MIN_REQUEST_INTERVAL, SessionStore, default_session_dir
 from .models import (
     Article,
     ArticleDetail,
@@ -36,6 +39,14 @@ from .models import (
 )
 
 DEFAULT_BASE_URL = "https://shop.fega.de"
+
+# Sent on every webshop request instead of httpx's default "python-httpx/x.y".
+# The shop is a browser-facing frontend, so we present ourselves as the browser
+# it was built for; the SOAP client (price_avail.py) is an API and deliberately
+# keeps the httpx default.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+)
 
 # The "/abtest/" segment is an A/B test FEGA & Schmitt appears to be running
 # on the shop frontend - observed stable across multiple days and sessions
@@ -70,6 +81,14 @@ class WebClient:
     different paths at once (extensions.md 2.2), and a cookie-file/process
     roundtrip has been observed to silently drop it (extensions.md,
     section 4) - close() / the context manager exist because of that.
+
+    Throttle and session reuse (see web/session.py): at most one request per
+    ``min_request_interval`` seconds (default 3) reaches the shop. With
+    ``persist_session=True`` (the default) the cookies and the time of the
+    last request live in a 0600 file per customer number under ``session_dir``
+    (default ``$XDG_CACHE_HOME/fega-schmitt-client``), so separate processes
+    queue behind each other and skip the login while the session is alive.
+    ``persist_session=False`` keeps both in memory for this object only.
     """
 
     def __init__(
@@ -82,15 +101,33 @@ class WebClient:
         login_path: str = DEFAULT_LOGIN_PATH,
         timeout: float = 30.0,
         http_client: httpx.Client | None = None,
+        min_request_interval: float = DEFAULT_MIN_REQUEST_INTERVAL,
+        persist_session: bool = True,
+        session_dir: str | os.PathLike[str] | None = None,
     ) -> None:
         self._customer_number = customer_number
         self._shop_password = shop_password
         self._base_url = base_url.rstrip("/")
         self._shop_path = shop_path
         self._login_path = login_path
-        self._client = http_client or httpx.Client(timeout=timeout, follow_redirects=False)
+        self._client = http_client or httpx.Client(
+            timeout=timeout,
+            follow_redirects=False,
+            headers={"User-Agent": BROWSER_USER_AGENT},
+        )
         self._owns_client = http_client is None
-        self._logged_in = False
+        # An injected client keeps a User-Agent its owner chose; only httpx's
+        # own default is replaced so the shop never sees "python-httpx/...".
+        if self._client.headers.get("User-Agent", "").startswith("python-httpx/"):
+            self._client.headers["User-Agent"] = BROWSER_USER_AGENT
+        self._session = SessionStore.for_customer(
+            customer_number,
+            (Path(session_dir) if session_dir is not None else default_session_dir()) if persist_session else None,
+            min_interval=min_request_interval,
+        )
+        # Restored cookies are trusted optimistically: if the session has died
+        # meanwhile, _request() sees the shop's login redirect and logs in again.
+        self._logged_in = self._session.load_cookies(self._client.cookies.jar)
 
     def close(self) -> None:
         if self._owns_client:
@@ -116,8 +153,8 @@ class WebClient:
         return _parse.parse_tile_list(response.text)
 
     def get_article(self, material_number: str) -> Article:
-        """Fetch everything this library knows about an article - EAN,
-        manufacturer numbers, category, own article number, technical
+        """Fetch everything this library knows about an article - description,
+        EAN, manufacturer numbers, category, own article number, technical
         attributes, images, accessories, variants, alternatives, cross-sell
         (docs/extensions.md 2.9) - from a single detail-page fetch.
 
@@ -127,10 +164,16 @@ class WebClient:
         requests, not one - but the same two requests as any single one of
         the narrower get_article_*() methods below, which are now thin
         accessors on top of this method's result rather than doing their
-        own fetch+parse.
+        own fetch+parse. The search result's ``description`` (the article
+        title) is carried over into the Article rather than discarded.
         """
-        response = self._get_product_page(material_number)
-        return _parse.parse_article(response.text, material_number, fetched_at=datetime.now(timezone.utc))
+        response, tile = self._get_product_page(material_number)
+        return _parse.parse_article(
+            response.text,
+            material_number,
+            fetched_at=datetime.now(timezone.utc),
+            description=tile.description,
+        )
 
     def get_article_detail(self, material_number: str) -> ArticleDetail:
         """Shortcut for the EAN/manufacturer-number/category/own-article-number
@@ -309,18 +352,22 @@ class WebClient:
 
     # --- Internal HTTP/session handling ---
 
-    def _get_product_page(self, material_number: str) -> httpx.Response:
+    def _get_product_page(self, material_number: str) -> tuple[httpx.Response, ArticleSearchResult]:
+        """Fetch an article's detail page, returning it together with the
+        search tile that pointed here - the tile carries the article's
+        description, which the detail page doesn't state separately."""
         results = self.search(material_number)
         match = next((r for r in results if r.material_number == material_number and r.detail_url), None)
         if match is None:
             raise FegaScrapingError(f"Konnte keine Artikelseite für Artikelnummer {material_number!r} finden")
-        return self._raw_get(match.detail_url)
+        return self._raw_get(match.detail_url), match
 
     def _ensure_login(self) -> None:
         if self._logged_in:
             return
         url = f"{self._base_url}{self._login_path}"
-        response = self._client.post(
+        response = self._send(
+            "POST",
             url,
             params={"cmd": "MemberLogin"},
             data={
@@ -372,9 +419,14 @@ class WebClient:
         return response
 
     def _send(self, method: str, url: str, **kwargs: object) -> httpx.Response:
+        # The single choke point for every shop request, login included: wait
+        # for the throttle, then persist whatever cookies the response set.
+        self._session.wait_turn()
         try:
-            return self._client.request(method, url, **kwargs)
+            response = self._client.request(method, url, **kwargs)
         except httpx.TimeoutException as exc:
             raise FegaTransportError(f"Zeitüberschreitung bei Anfrage an {url}") from exc
         except httpx.HTTPError as exc:
             raise FegaTransportError(f"HTTP-Anfrage an {url} fehlgeschlagen: {exc}") from exc
+        self._session.save_cookies(self._client.cookies.jar)
+        return response

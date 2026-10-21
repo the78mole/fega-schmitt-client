@@ -307,19 +307,27 @@ def parse_cutting_fee(html: str) -> Decimal | None:
     return _parse_decimal(html_lib.unescape(match.group(1)).replace("€", "").strip())
 
 
-def parse_article(html: str, material_number: str, fetched_at: datetime) -> Article:
+def parse_article(
+    html: str,
+    material_number: str,
+    fetched_at: datetime,
+    description: str | None = None,
+) -> Article:
     """Parse everything this module knows how to extract from one article
     detail page into a single tree (extensions.md 2.9).
 
     Composes the narrower parse_article_*() functions above rather than
     duplicating their regexes - each stays individually usable/testable,
     this just assembles their results plus a caller-supplied fetch
-    timestamp (the page itself carries no "as of" marker).
+    timestamp (the page itself carries no "as of" marker) and an optional
+    caller-supplied ``description`` (the article title, which the caller
+    already holds from the search tile that pointed it at this page).
     """
     detail = parse_article_detail(html, material_number)
     return Article(
         material_number=detail.material_number,
         fetched_at=fetched_at,
+        description=description,
         ean=detail.ean,
         manufacturer_item_number=detail.manufacturer_item_number,
         manufacturer_item_number_alt=detail.manufacturer_item_number_alt,
