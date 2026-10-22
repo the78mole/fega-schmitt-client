@@ -143,6 +143,27 @@ fega web set-article-number 104260 MEINE-NUMMER
 
 `fega web --help` zeigt alle Unterbefehle (Suche, Artikeldetails/-attribute/-bilder, Zubehör/Varianten/Alternativen, Kabellängen/Schnittkosten, Warenkorb, Bestellungen, Aktionsangebote, eigene Artikelnummer lesen/setzen).
 
+### DATANORM-Lieferungen in SQLite laden
+
+`fega datanorm import` lädt eine Lieferung (die `datanorm.zip` aus der FEGA-Mail oder ein Verzeichnis mit den entpackten Dateien) nach `~/.cache/fega-schmitt-client/datanorm.db` (anderer Ort per `--db` oder `FEGA_DATANORM_DB`):
+
+```bash
+uv run fega datanorm import datanorm.zip -s
+```
+
+Jeder Import baut die Datenbank neu auf. Eine vorhandene Datenbank wird vorher nach `datanorm-<lieferdatum>.db` daneben kopiert. `-s`/`--summary` listet danach die Änderungen gegenüber der vorherigen Lieferung auf: neue, entfallene und geänderte Artikel, Preisänderungen je Einheit mit den größten Ausreißern, Warengruppen und Zuschläge. Die View `article_prices` liefert Artikel mit Listen- und Einkaufspreis in Euro. Tabellen und Feldbedeutungen stehen in [DATANORM.md](DATANORM.md).
+
+### DATANORM-Lieferungen archivieren
+
+`fega datanorm upload` lädt die per Mail gelieferten DATANORM-Dateien in einen S3-kompatiblen Store (z. B. Garage). Braucht das optionale Extra `s3` (boto3): `uv tool install 'fega-schmitt-client[s3]'`. Die S3-Zugangsdaten sind unabhängig von den Shop-Zugangsdaten und kommen aus `FEGA_S3_ENDPOINT_URL`, `FEGA_S3_REGION`, `FEGA_S3_BUCKET`, `FEGA_S3_ACCESS_KEY_ID` und `FEGA_S3_SECRET_ACCESS_KEY` (oder den gleichnamigen Optionen):
+
+```bash
+uv run --env-file .env fega datanorm upload datanorm.zip
+uv run --env-file .env fega datanorm upload datanorm.001 datanorm.wrg datpreis.001 --date 2026-10-21
+```
+
+Jede Datei landet unter `<präfix>/<YYYY-MM-DD>/<dateiname>` (Präfix per `--prefix`, Default `fega`), z. B. `s3://datanorm/fega/2026-10-21/datanorm.zip` mit `FEGA_S3_BUCKET=datanorm`. So kann ein Bucket die DATANORM-Archive mehrerer Lieferanten aufnehmen. Ohne `--date` gilt das Änderungsdatum der Datei. `unzip` übernimmt die Zeitstempel aus dem Archiv, entpackte Dateien tragen also das Lieferdatum. `--key` setzt den Objekt-Key für eine einzelne Datei komplett selbst.
+
 ## Installation
 
 ```bash
