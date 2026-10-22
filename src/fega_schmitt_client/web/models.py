@@ -114,6 +114,33 @@ class Article:
     cross_sell: list[str] = field(default_factory=list)
     documents: list[str] = field(default_factory=list)
 
+    @classmethod
+    def from_dict(cls, data: dict) -> Article:
+        """Inverse of :meth:`to_dict`, used by the web cache (web/cache.py)."""
+        material_number = data["material_number"]
+        cutting_fee = data.get("cutting_fee")
+        return cls(
+            material_number=material_number,
+            fetched_at=datetime.fromisoformat(data["fetched_at"]),
+            description=data.get("description"),
+            own_article_number=data.get("own_article_number"),
+            ean=data.get("ean"),
+            manufacturer_item_number=data.get("manufacturer_item_number"),
+            manufacturer_item_number_alt=data.get("manufacturer_item_number_alt"),
+            supplier_name=data.get("supplier_name"),
+            supplier_number=data.get("supplier_number"),
+            category_id=(data.get("category") or {}).get("id"),
+            category_name=(data.get("category") or {}).get("name"),
+            cutting_fee=Decimal(cutting_fee) if cutting_fee is not None else None,
+            attributes=dict(data.get("attributes") or {}),
+            images=[ArticleImage(material_number, i["url"], i["is_primary"]) for i in data.get("images") or []],
+            accessories=list(data.get("accessories") or []),
+            variants=list(data.get("variants") or []),
+            alternatives=list(data.get("alternatives") or []),
+            cross_sell=list(data.get("cross_sell") or []),
+            documents=list(data.get("documents") or []),
+        )
+
     def to_dict(self) -> dict[str, object]:
         """JSON-serializable form (``json.dumps(article.to_dict())``) - a
         flat dataclass field dump wouldn't be, since ``fetched_at`` is a
