@@ -35,7 +35,7 @@ jobs:
 
     - name: Calculate semantic version
       id: semver
-      uses: paulhatch/semantic-version@v6.0.4
+      uses: paulhatch/semantic-version@v6.0.5
       with:
         tag_prefix: "v"
         major_pattern: "/(feat|fix|refactor)!:/"
