@@ -28,7 +28,7 @@ Legende: **S** spezifiziert (in extensions.md beschrieben) · **I** implementier
 | `get_cart(id)` | | ✅ | ✅ | ✅ | ✅ |
 | `get_order_list()` | Status-Extraktion Best-Effort — funktioniert für einen beobachteten Status-Typ zuverlässig, sonst `None` statt Ratewert | ✅ | ✅ | ✅ | ✅ |
 | `get_order(order_number)` | | ✅ | ✅ | ✅ | ✅ |
-| `set_article_number(material_number, value)` | Schreiben — End-to-End-Roundtrip live bestätigt (11.08.2026, Artikel 253439, idempotent gegen den real vom Nutzer gepflegten Wert getestet) | ✅ | ✅ | ✅ | ✅ |
+| `set_article_number(material_number, value)` | Schreiben — End-to-End-Roundtrip live bestätigt (11.08.2026, idempotent gegen einen bereits im Shop gepflegten Wert getestet) | ✅ | ✅ | ✅ | ✅ |
 | `get_article_attributes(material_number)` | Kategorie-/artikeltyp-spezifische Attribute (`dict[str, str]`, z. B. "Farbe"/"Nennspannung") aus dem Produktdetails-Grid | ✅ | ✅ | ✅ | ✅ |
 | `get_article_accessories(material_number)` | Artikelnummern aus dem "Zubehör"-Bereich | ✅ | ✅ | ✅ | ✅ |
 | `get_article_variants(material_number)` | **Erweitert (11.08.2026):** liest jetzt die vollständige Attribut-Varianten-Matrix aus dem `data-variables`-JSON (bis zu 512 Artikelnummern bei einem Testartikel statt zuvor 3 aus der kleinen "Varianten"-Teaser-Liste, die nur noch als Fallback dient) | ✅ | ✅ | ✅ | ✅ |
@@ -55,7 +55,7 @@ Von dir gewünscht. Vier der fünf Kandidaten sind mittlerweile live verifiziert
 
 Nebenbefund, jetzt gegenstandslos: Der `cmd=AjaxVarianten&mode=getVariants`-Endpunkt (EAV-Radiobuttons für Farbe/Größe/etc.) lieferte bei allen getesteten Aufrufen `HTTP 500` und wurde nicht weiter verfolgt — sich als unnötig herausgestellt, weil die vollständige Varianten-Matrix bereits im normal abgerufenen Seiten-HTML steckt (siehe unten).
 
-**Vollständige Varianten-Matrix statt kleiner Teaser-Liste (11.08.2026):** Auf Hinweis des Nutzers (ein Artikel mit einer auffällig großen, klickbaren Variantenauswahl in der Shop-UI) untersucht — mit Playwright im headed-Modus (Headless wurde vom Server mit "The URL you requested has been blocked" abgewiesen, `httpx` war davon nicht betroffen). Fund: Der bereits genutzte `data-variables`-JSON-Blob auf der Artikeldetailseite (Korrektur nebenbei: sitzt auf `<body>`, nicht auf einem eigenen `<div>`, siehe extensions.md 2.4) trägt zusätzlich ein `"variants"`-Array mit der kompletten Attributkombinatorik — 512 Artikelnummern bei einem Testartikel (Leitungsschutzschalter) statt 3 aus der alten Teaser-Liste. Kein Playwright/AJAX für die Daten selbst nötig, alles bereits im `httpx`-Response enthalten. `get_article_variants()` liest jetzt daraus, mit Fallback auf die alte Extraktion. EF/EV-Attributcodes werden bewusst noch nicht in lesbare Namen aufgelöst (Zusatzaufwand, siehe extensions.md 2.9) — auf Nutzerwunsch zunächst nur die flache Artikelnummernliste.
+**Vollständige Varianten-Matrix statt kleiner Teaser-Liste (11.08.2026):** Anhand eines Artikels mit einer auffällig großen, klickbaren Variantenauswahl in der Shop-UI untersucht — mit Playwright im headed-Modus (Headless wurde vom Server mit "The URL you requested has been blocked" abgewiesen, `httpx` war davon nicht betroffen). Fund: Der bereits genutzte `data-variables`-JSON-Blob auf der Artikeldetailseite (Korrektur nebenbei: sitzt auf `<body>`, nicht auf einem eigenen `<div>`, siehe extensions.md 2.4) trägt zusätzlich ein `"variants"`-Array mit der kompletten Attributkombinatorik — 512 Artikelnummern bei einem Testartikel (Leitungsschutzschalter) statt 3 aus der alten Teaser-Liste. Kein Playwright/AJAX für die Daten selbst nötig, alles bereits im `httpx`-Response enthalten. `get_article_variants()` liest jetzt daraus, mit Fallback auf die alte Extraktion. EF/EV-Attributcodes werden bewusst noch nicht in lesbare Namen aufgelöst (Zusatzaufwand, siehe extensions.md 2.9) — zunächst nur die flache Artikelnummernliste.
 
 
 ### Geplant (19.10.2026): Schreibzugriff Warenkorb und Objekte/Kommissionen
@@ -75,7 +75,7 @@ Endpunkte per Browser-Netzwerkmitschnitt kartiert und live angewendet (siehe [do
 
 ## 2. DATANORM v5 Submodul
 
-Wartet auf Zugangsdaten + Format-Spezifikation von FEGA & Schmitt (beantragt, siehe [docs/architecture.md](docs/architecture.md#73-datanorm-v5-artikel-stammdatenpreislisten)).
+Import und Archivierung der per Mail gelieferten Dateien sind umgesetzt, siehe [DATANORM.md](DATANORM.md). Eine offizielle Format-Spezifikation von FEGA & Schmitt fehlt noch.
 
 - Datei-Parsing für Artikel-Stammdaten/Preislisten (reine Funktionen, kein FTP-Transport in der Library, analog UGL4-Zuschnitt)
 - Falls Hersteller-Nr./EAN enthalten sind: robusterer, offizieller Ersatz für Teile von `web` (siehe extensions.md Abschnitt 6)

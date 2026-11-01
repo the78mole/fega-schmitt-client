@@ -517,7 +517,7 @@ def parse_order_detail(order_number: str, html: str) -> Order:
 # --- Cable lengths (extensions.md 2.10) ---
 
 # "Bestand <Standort>" headers (e.g. "Zentrallager", "FEGA & Schmitt
-# Erlangen") delimit one location's rows from the next - both locations
+# Musterstadt") delimit one location's rows from the next - both locations
 # render the identical row markup below, so rows must be scoped to the
 # location block they came from rather than parsed globally.
 _KLAENG_LOCATION_RE = re.compile(

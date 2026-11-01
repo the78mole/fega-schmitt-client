@@ -28,7 +28,7 @@ ET.register_namespace("a", REQUEST_NS)
 _PARTNER_WAREHOUSE_RE = re.compile(r"^\d{1,4}$")
 
 # Observed live: FEGA's server sometimes writes bare "&" into PARTNER_WAREHOUSE_NAME
-# (e.g. "FEGA & Schmitt Erlangen"), which is invalid XML. We only fall back to
+# (e.g. "FEGA & Schmitt Musterstadt"), which is invalid XML. We only fall back to
 # this repair when strict parsing fails, so well-formed responses are untouched.
 _BARE_AMPERSAND_RE = re.compile(rb"&(?!amp;|lt;|gt;|quot;|apos;|#)")
 
@@ -57,7 +57,7 @@ def build_request(
 
     ``partner_warehouse`` is the FEGA & Schmitt Lagernummer per spec (a
     numeric warehouse *number*, max. 4 digits - not a location name such as
-    "Erlangen"), sent as ``PARTNER_WAREHOUSE`` in the request ``HEADER``. It
+    "Musterstadt"), sent as ``PARTNER_WAREHOUSE`` in the request ``HEADER``. It
     only matters when ``shipment_type="02"`` (Abholung/pickup) and is meant
     to let the caller ask for a pickup warehouse other than FEGA & Schmitt's
     default one; for delivery (``shipment_type="01"``, the default) or when
@@ -114,7 +114,7 @@ def parse_response(xml_bytes: bytes) -> ParsedResponse:
 
     Tolerates one known FEGA & Schmitt server quirk: bare ``&`` characters in
     text content (seen in ``PARTNER_WAREHOUSE_NAME`` values like "FEGA &
-    Schmitt Erlangen") that make the response technically invalid XML. If
+    Schmitt Musterstadt") that make the response technically invalid XML. If
     strict parsing fails, we retry once with bare ``&`` escaped to ``&amp;``.
     """
     try:
