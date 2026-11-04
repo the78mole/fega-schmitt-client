@@ -171,11 +171,11 @@ Warum nicht v1:
 
 Kein Live-Request/Response-Protokoll wie SOAP, sondern ein **Branchenstandard für den Austausch von Artikel-Stammdaten und Preislisten** als Datei — ähnlich UGL4 im Betriebsmodell (Datei statt API-Aufruf), aber ein anderes, älteres und deutlich weiter verbreitetes Format. Die SOAP-Spezifikation selbst verweist darauf als Quelle der `MATERIAL_NUMBER`: "die FEGA & Schmitt – Artikelnummer, die Sie über eine andere Schnittstelle (z.B. DATANORM) bezogen haben" (siehe `Schnittstellenbeschreibung_SOAP.pdf`, Abschnitt 1). DATANORM ist damit nicht nur ein optionales Zusatzformat, sondern die naheliegende Quelle für genau die Artikelnummern, die `get_price_availability` als Eingabe benötigt.
 
-Status: DATANORM v5-Zugang sowie Offline-Zugang (FTP) bei FEGA & Schmitt sind beantragt, aber noch nicht bestätigt und keine Format-Spezifikation im Repo vorhanden (offener Punkt, siehe README). Sobald Zugangsdaten und Spezifikation vorliegen, ist ein eigenes Untermodul `fega_schmitt_client.datanorm` mit reinen Datei-Parsing-Funktionen (analog zu UGL4, z. B. `parse_price_file(...)`) der naheliegende Zuschnitt — der FTP-Transport selbst bliebe aus denselben Gründen wie bei UGL4 außerhalb der Library.
+Status: Das Untermodul `fega_schmitt_client.datanorm` liest die von FEGA & Schmitt per Mail gelieferten Dateien, siehe [DATANORM.md](../DATANORM.md). Eine offizielle Format-Spezifikation liegt nicht vor. Ein FTP-Transport bliebe aus denselben Gründen wie bei UGL4 außerhalb der Library.
 
 ## 8. Technologiewahl (Vorschlag, noch nicht festgelegt)
 
-Konsistent mit anderen Python-Bibliotheken in diesem Workspace (z. B. `vnbdigital-client`):
+Vorgeschlagener Stack:
 
 - **Paketverwaltung:** `uv`, Linting/Formatting mit `ruff`
 - **SOAP/XML:** leichtgewichtiges XML-Templating (`lxml`/`xml.etree`) statt eines vollen WSDL-getriebenen SOAP-Stacks wie `zeep` — die Schnittstelle ist klein, statisch und ohne WSDL-Dokument in der Spec referenziert

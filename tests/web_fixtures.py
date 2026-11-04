@@ -201,7 +201,7 @@ CABLE_LENGTHS_HTML = """
     </div>
   </div>
   <div class="col-xs-12 text-center bold height lg bg-blue20">
-    Bestand FEGA &amp; Schmitt Erlangen
+    Bestand FEGA &amp; Schmitt Musterstadt
   </div>
   <div class="row fsKlaeng__availList">
     <div class="hide-mobile">

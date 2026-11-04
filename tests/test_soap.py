@@ -81,7 +81,7 @@ def test_build_request_includes_partner_warehouse_when_set():
     assert "PARTNER_WAREHOUSE>22<" in xml_text
 
 
-@pytest.mark.parametrize("invalid_value", ["", "12345", "22a", "Erlangen", "-1", "1.0"])
+@pytest.mark.parametrize("invalid_value", ["", "12345", "22a", "Musterstadt", "-1", "1.0"])
 def test_build_request_rejects_invalid_partner_warehouse(invalid_value):
     items = [PriceAvailRequestItem(material_number="A", quantity=1)]
     with pytest.raises(ValueError):
@@ -144,13 +144,13 @@ def test_parse_response_rejects_malformed_xml():
 
 def test_parse_response_tolerates_bare_ampersand_in_warehouse_name():
     # Observed live from FEGA & Schmitt: PARTNER_WAREHOUSE_NAME can contain an
-    # unescaped "&" (e.g. "FEGA & Schmitt Erlangen"), making the XML technically
+    # unescaped "&" (e.g. "FEGA & Schmitt Musterstadt"), making the XML technically
     # invalid. parse_response() should repair and parse it anyway.
     xml = (
         EXAMPLE_RESPONSE_XML.decode("ISO-8859-1")
         .replace(
             "<PARTNER_WAREHOUSE_NAME>Zentrallager</PARTNER_WAREHOUSE_NAME>",
-            "<PARTNER_WAREHOUSE_NAME>FEGA & Schmitt Erlangen</PARTNER_WAREHOUSE_NAME>",
+            "<PARTNER_WAREHOUSE_NAME>FEGA & Schmitt Musterstadt</PARTNER_WAREHOUSE_NAME>",
             1,
         )
         .encode("ISO-8859-1")
@@ -158,7 +158,7 @@ def test_parse_response_tolerates_bare_ampersand_in_warehouse_name():
 
     parsed = parse_response(xml)
 
-    assert parsed.items[0].warehouse_name == "FEGA & Schmitt Erlangen"
+    assert parsed.items[0].warehouse_name == "FEGA & Schmitt Musterstadt"
 
 
 def test_parse_response_still_rejects_xml_broken_for_other_reasons():

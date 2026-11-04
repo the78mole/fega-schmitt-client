@@ -43,7 +43,7 @@ def _sample_cart() -> Cart:
         ],
         order_info=OrderInfo(mode_of_shipment="Lieferung", commission="Baustelle Musterweg"),
         supplier_info=SupplierInfo(id_no="50", address=Address(name1="FEGA & Schmitt", city="Nürnberg")),
-        customer_info=CustomerInfo(id_no="9920", address=Address(name1="Mustermann GmbH", city="Erlangen")),
+        customer_info=CustomerInfo(id_no="9920", address=Address(name1="Mustermann GmbH", city="Musterstadt")),
     )
 
 
@@ -90,7 +90,7 @@ def test_round_trip_preserves_item_and_address_fields():
     assert parsed.order_info.commission == "Baustelle Musterweg"
     assert parsed.supplier_info.id_no == "50"
     assert parsed.supplier_info.address.name1 == "FEGA & Schmitt"
-    assert parsed.customer_info.address.city == "Erlangen"
+    assert parsed.customer_info.address.city == "Musterstadt"
 
 
 def test_parse_warenkorb_xml_reads_rueckgabekz_from_response():

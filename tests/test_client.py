@@ -100,7 +100,7 @@ def test_get_price_availability_rejects_invalid_partner_warehouse_without_http_c
     with pytest.raises(ValueError):
         client.get_price_availability(
             [PriceAvailRequestItem(material_number="0815", quantity=1)],
-            partner_warehouse="Erlangen",
+            partner_warehouse="Musterstadt",
         )
 
     assert route.call_count == 0

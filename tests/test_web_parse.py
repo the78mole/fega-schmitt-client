@@ -211,9 +211,9 @@ def test_parse_cable_lengths_scopes_rows_to_their_location():
     lengths = _parse.parse_cable_lengths(CABLE_LENGTHS_HTML)
 
     assert len(lengths) == 3
-    assert [entry.location for entry in lengths] == ["Zentrallager", "Zentrallager", "FEGA & Schmitt Erlangen"]
+    assert [entry.location for entry in lengths] == ["Zentrallager", "Zentrallager", "FEGA & Schmitt Musterstadt"]
 
-    remainder, full_drum, erlangen = lengths
+    remainder, full_drum, musterstadt = lengths
 
     assert remainder.packaging == "KTG Trommel"
     assert remainder.is_cuttable is True
@@ -227,5 +227,5 @@ def test_parse_cable_lengths_scopes_rows_to_their_location():
     assert full_drum.count == 35
     assert full_drum.total_available_m == Decimal(17500)
 
-    assert erlangen.count == 2
-    assert erlangen.total_available_m == Decimal(80)
+    assert musterstadt.count == 2
+    assert musterstadt.total_available_m == Decimal(80)

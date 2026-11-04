@@ -97,7 +97,7 @@ def test_web_cable_lengths_table_output():
     assert result.exit_code == 0, result.output
     assert "Zentrallager" in result.output
     assert "insgesamt 34 m" in result.output
-    assert "FEGA & Schmitt Erlangen" in result.output
+    assert "FEGA & Schmitt Musterstadt" in result.output
 
 
 @respx.mock

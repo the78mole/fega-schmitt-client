@@ -12,3 +12,6 @@ coverage.xml
 htmlcov/
 /docs/specs/
 *.hcl
+/datanorm-data/
+*.db
+*.db.new
